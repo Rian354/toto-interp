@@ -8,6 +8,7 @@
 runs/
 .smoke/
 .smoke_pipeline/
+data/
 *.egg-info/
 build/
 dist/

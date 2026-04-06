@@ -13,6 +13,7 @@ from toto.evaluation.lsf.lsf_datasets import LSFDataset, LSFDatasetName
 from .boom import sample_window_starts
 from .fev_tasks import FEVTaskSpec, get_fev_task
 from .labels import compute_dynamic_regime_labels
+from .lsf import ensure_lsf_datasets, required_archives_for_lsf_datasets
 from .types import WindowExample
 
 FEV_DATASET_REPO_ID = "autogluon/fev_datasets"
@@ -218,6 +219,11 @@ def build_lsf_windows(
     include_heldout_late: bool = False,
 ) -> list[WindowExample]:
     dataset_enum = dataset_name if isinstance(dataset_name, LSFDatasetName) else LSFDatasetName(dataset_name)
+    ensure_lsf_datasets(
+        lsf_path,
+        archive_keys=required_archives_for_lsf_datasets([dataset_enum.value]),
+        download=False,
+    )
     lsf_dataset = LSFDataset(dataset_enum, mode=mode, split=split, lsf_path=str(lsf_path))
 
     windows: list[WindowExample] = []

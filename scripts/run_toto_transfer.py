@@ -14,6 +14,7 @@ if str(ROOT) not in sys.path:
 from toto_interp import ProbeArtifact, TraceConfig, extract_activations, load_toto_with_fallback, score_probe
 from toto_interp.fev_tasks import get_fev_task, list_fev_tasks
 from toto_interp.loader import resolve_device
+from toto_interp.lsf import default_lsf_data_path, ensure_lsf_datasets, required_archives_for_lsf_datasets
 from toto_interp.transfer import build_fev_windows, build_lsf_windows
 
 
@@ -39,6 +40,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--fev-ev-fields", nargs="*", default=[])
     parser.add_argument("--lsf-datasets", nargs="*", default=["ETTh1"])
     parser.add_argument("--lsf-path", type=Path, default=None)
+    parser.add_argument("--download-lsf", action="store_true")
     return parser.parse_args()
 
 
@@ -136,6 +138,16 @@ def main() -> None:
         raise ValueError("--output-dir is required unless --list-fev-tasks is used.")
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
+
+    if args.dataset in ("lsf", "both"):
+        resolved_lsf_path = args.lsf_path or default_lsf_data_path(ROOT)
+        archive_keys = required_archives_for_lsf_datasets(args.lsf_datasets)
+        ensure_lsf_datasets(
+            resolved_lsf_path,
+            archive_keys=archive_keys,
+            download=args.download_lsf,
+        )
+        args.lsf_path = resolved_lsf_path
 
     probe_entries = [(path, ProbeArtifact.load(path)) for path in resolve_probe_paths(args)]
     probe_entries = [(path, probe) for path, probe in probe_entries if probe.label_spec.task_type == "continuous"]

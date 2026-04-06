@@ -29,6 +29,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--fev-tasks", nargs="*", default=["entsoe_15T", "epf_be"])
     parser.add_argument("--lsf-datasets", nargs="*", default=["ETTh1"])
     parser.add_argument("--lsf-path", type=Path, default=None)
+    parser.add_argument("--download-lsf", action="store_true")
     parser.add_argument("--reuse-existing", action="store_true")
     return parser.parse_args()
 
@@ -148,6 +149,8 @@ def main() -> None:
 
     transfer_generated = False
     if not args.skip_transfer:
+        resolved_lsf_path = args.lsf_path or (ROOT / "data" / "lsf_datasets")
+        include_lsf = args.download_lsf or args.lsf_path is not None or resolved_lsf_path.exists()
         transfer_command = [
             sys.executable,
             script_path("run_toto_transfer.py"),
@@ -165,8 +168,19 @@ def main() -> None:
             *args.fev_tasks,
             *common_model_args,
         ]
-        if args.lsf_path is not None:
-            transfer_command.extend(["--dataset", "both", "--lsf-path", str(args.lsf_path), "--lsf-datasets", *args.lsf_datasets])
+        if include_lsf:
+            transfer_command.extend(
+                [
+                    "--dataset",
+                    "both",
+                    "--lsf-path",
+                    str(resolved_lsf_path),
+                    "--lsf-datasets",
+                    *args.lsf_datasets,
+                ]
+            )
+            if args.download_lsf:
+                transfer_command.append("--download-lsf")
         else:
             transfer_command.extend(["--dataset", "fev"])
 

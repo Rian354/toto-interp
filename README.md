@@ -19,6 +19,7 @@ Upstream/public functionality already ported into this repo:
 - BOOM taxonomy loading and BOOM snapshot/window construction
 - a standalone BOOM full-dataset downloader
 - an official FEV task registry mirrored from Toto's public evaluation config
+- an LSF downloader/validator/normalizer for the public CSV benchmark bundles
 - optional local-dev fallback to a Toto checkout through `TOTO_REPO_PATH`
 
 For a detailed architecture and capability report, see
@@ -47,12 +48,17 @@ If you want the entire public BOOM dataset locally, use:
 
 - `python scripts/download_boom_dataset.py --output-dir data`
 
+If you want the public LSF benchmark CSVs Toto expects, use:
+
+- `python scripts/download_lsf_datasets.py --output-dir data/lsf_datasets`
+
 ## Main entrypoints
 
 - `python scripts/dump_toto_activations.py --output-dir runs/activations`
 - `python scripts/fit_toto_probes.py --activation-files runs/activations/train_activations.pt runs/activations/val_activations.pt runs/activations/test_activations.pt --output-dir runs/probes`
 - `python scripts/run_toto_interventions.py --probe-path runs/probes/artifacts/shift_risk__layer_10__final_context__series_mean.pt --output-dir runs/interventions`
 - `python scripts/run_toto_transfer.py --probe-dir runs/probes --output-dir runs/transfer --dataset fev --fev-tasks entsoe_15T`
+- `python scripts/download_lsf_datasets.py --output-dir data/lsf_datasets`
 - `python scripts/render_toto_report.py --probe-results-path runs/probes/probe_results.csv --intervention-dirs runs/interventions/shift_risk --transfer-dir runs/transfer --output-path runs/report.md --summary-json-path runs/report_summary.json`
 - `python scripts/run_toto_pipeline.py --output-dir runs/full`
 
@@ -67,11 +73,11 @@ If you want the entire public BOOM dataset locally, use:
 4. Run zero-shot transfer on FEV:
    `python scripts/run_toto_transfer.py --probe-dir runs/probes --output-dir runs/transfer/fev --dataset fev --fev-tasks entsoe_15T epf_be`
 5. Run zero-shot transfer on LSF:
-   `python scripts/run_toto_transfer.py --probe-dir runs/probes --output-dir runs/transfer/lsf --dataset lsf --lsf-path /path/to/lsf_data --lsf-datasets ETTh1 electricity`
+   `python scripts/run_toto_transfer.py --probe-dir runs/probes --output-dir runs/transfer/lsf --dataset lsf --lsf-path data/lsf_datasets --lsf-datasets ETTh1 electricity --download-lsf`
 6. Render a run report:
    `python scripts/render_toto_report.py --probe-results-path runs/probes/probe_results.csv --intervention-dirs runs/interventions/shift_risk runs/interventions/future_sparsity --transfer-dir runs/transfer --output-path runs/report.md --summary-json-path runs/report_summary.json`
 7. Or run the whole workflow at once:
-   `python scripts/run_toto_pipeline.py --output-dir runs/full --fev-tasks entsoe_15T epf_be`
+   `python scripts/run_toto_pipeline.py --output-dir runs/full --fev-tasks entsoe_15T epf_be --download-lsf --lsf-datasets ETTh1 electricity`
 
 ## Useful options
 
@@ -80,13 +86,15 @@ If you want the entire public BOOM dataset locally, use:
 - `python scripts/run_toto_transfer.py --list-fev-tasks` prints the vendored official FEV task registry.
 - `python scripts/run_toto_transfer.py --list-fev-tasks --fev-safe-only` restricts to paper-safe default tasks.
 - `python scripts/run_toto_pipeline.py --reuse-existing` skips completed steps and only refreshes later outputs.
+- `python scripts/download_lsf_datasets.py --validate-only` checks an existing local LSF layout.
 
 ## Transfer notes
 
 - FEV transfer uses the public Hugging Face dataset `autogluon/fev_datasets`.
-- LSF transfer uses Toto's published local LSF loader, so you need the benchmark CSVs available locally and passed with `--lsf-path`.
+- LSF transfer uses Toto's published local LSF loader. This repo now ships a downloader and validator for the public CSV bundles Toto expects.
 - `run_toto_transfer.py` can use the vendored official FEV task definitions or explicit dataset config names.
 - `run_toto_transfer.py` automatically reuses the best continuous BOOM probe views from `probe_localization_summary.csv` when you point it at `--probe-dir`.
+- Detailed LSF setup instructions and the public source links are in [docs/lsf_setup.md](/Users/dhyeymavani/Documents/GitHub/toto-interp/docs/lsf_setup.md).
 
 ## Smoke validation
 

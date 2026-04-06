@@ -4,6 +4,12 @@ ensure_toto_importable()
 
 from .fev_tasks import FEVTaskSpec, get_fev_task, list_fev_tasks
 from .intervention import apply_intervention
+from .lsf import (
+    default_lsf_data_path,
+    download_lsf_datasets,
+    ensure_lsf_datasets,
+    validate_lsf_layout,
+)
 from .loader import load_toto_with_fallback, resolve_device
 from .probe import fit_probe, score_probe
 from .report import write_report
@@ -30,6 +36,9 @@ __all__ = [
     "build_fev_windows",
     "build_lsf_windows",
     "collect_transfer_windows",
+    "default_lsf_data_path",
+    "download_lsf_datasets",
+    "ensure_lsf_datasets",
     "ensure_toto_importable",
     "extract_activations",
     "fit_probe",
@@ -38,5 +47,6 @@ __all__ = [
     "load_toto_with_fallback",
     "resolve_device",
     "score_probe",
+    "validate_lsf_layout",
     "write_report",
 ]

@@ -191,6 +191,7 @@ independent research workflow:
 - BOOM full-dataset downloading
 - BOOM windowing utilities
 - FEV task definitions from Toto's public evaluation configuration
+- LSF dataset downloading, validation, and layout normalization
 - compatibility logic for using the published `toto-ts` package with an
   optional no-xFormers fallback
 
@@ -224,12 +225,10 @@ tiny by design. Their purpose is software validation, not scientific evidence.
 
 ## Current Limits
 
-The most important remaining external requirement is LSF data availability.
-FEV runs can execute against public Hugging Face data, but LSF transfer still
-requires local benchmark CSVs supplied through `--lsf-path`.
-
-That is a dataset availability issue, not a missing software capability: the
-adapter and evaluation path are already implemented here.
+LSF still depends on downloading the public benchmark CSVs, but that is now
+handled inside this repo as well through `scripts/download_lsf_datasets.py` and
+the `toto_interp.lsf` helper module. The data itself is external, but the
+bootstrap and validation workflow is no longer a manual gap.
 
 ## Bottom Line
 
