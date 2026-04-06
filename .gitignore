@@ -7,6 +7,7 @@
 .venv/
 runs/
 .smoke/
+.smoke_pipeline/
 *.egg-info/
 build/
 dist/

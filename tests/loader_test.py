@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from toto_interp import load_toto_with_fallback
+from toto_interp.loader import resolve_device
 from toto.model.toto import Toto
 
 
@@ -21,3 +22,7 @@ def test_load_toto_with_fallback_disables_memory_efficient_attention(monkeypatch
     assert loaded is sentinel
     assert len(calls) == 2
     assert calls[1]["use_memory_efficient_attention"] is False
+
+
+def test_resolve_device_respects_explicit_choice():
+    assert resolve_device("cpu") == "cpu"

@@ -12,13 +12,17 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from toto_interp import ProbeArtifact, TraceConfig, extract_activations, load_toto_with_fallback, score_probe
+from toto_interp.fev_tasks import get_fev_task, list_fev_tasks
+from toto_interp.loader import resolve_device
 from toto_interp.transfer import build_fev_windows, build_lsf_windows
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run zero-shot BOOM probe transfer on FEV and LSF datasets.")
-    parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument("--output-dir", type=Path, required=False)
     parser.add_argument("--model-id", type=str, default="Datadog/Toto-Open-Base-1.0")
+    parser.add_argument("--device", type=str, default="auto")
+    parser.add_argument("--compile", action="store_true")
     parser.add_argument("--probe-paths", type=Path, nargs="*", default=None)
     parser.add_argument("--probe-dir", type=Path, default=None)
     parser.add_argument("--dataset", choices=("fev", "lsf", "both"), default="both")
@@ -27,6 +31,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-windows-per-series", type=int, default=4)
     parser.add_argument("--include-heldout-late", action="store_true")
     parser.add_argument("--disable-kv-cache", action="store_true")
+    parser.add_argument("--fev-tasks", nargs="*", default=[])
+    parser.add_argument("--fev-safe-only", action="store_true")
+    parser.add_argument("--list-fev-tasks", action="store_true")
     parser.add_argument("--fev-configs", nargs="*", default=["ETT_15T"])
     parser.add_argument("--fev-target-fields", nargs="*", default=None)
     parser.add_argument("--fev-ev-fields", nargs="*", default=[])
@@ -68,6 +75,24 @@ def build_windows_for_dataset(
 ) -> dict[str, list]:
     datasets_to_windows: dict[str, list] = {}
     if benchmark_name == "fev":
+        task_names = list(args.fev_tasks)
+        if args.fev_safe_only:
+            task_names.extend(task.dataset_config for task in list_fev_tasks(safe_only=True))
+        for task_name in sorted(set(task_names)):
+            task_spec = get_fev_task(task_name)
+            if task_spec is None:
+                raise ValueError(f"Unknown FEV task: {task_name}")
+            datasets_to_windows[task_name] = build_fev_windows(
+                config_name=task_spec.dataset_config,
+                task_name=task_name,
+                context_length=args.context_length,
+                patch_size=patch_size,
+                target_fields=task_spec.target_fields,
+                ev_fields=task_spec.exogenous_fields,
+                max_series=args.max_series,
+                max_windows_per_series=args.max_windows_per_series,
+                include_heldout_late=args.include_heldout_late,
+            )
         for config_name in args.fev_configs:
             datasets_to_windows[config_name] = build_fev_windows(
                 config_name=config_name,
@@ -99,6 +124,17 @@ def build_windows_for_dataset(
 
 def main() -> None:
     args = parse_args()
+    if args.list_fev_tasks:
+        for task in list_fev_tasks(safe_only=args.fev_safe_only):
+            print(
+                f"{task.dataset_config}\thorizon={task.horizon}\ttargets={','.join(task.target_fields)}"
+                f"\tsafe={task.safe_for_paper}"
+            )
+        return
+
+    if args.output_dir is None:
+        raise ValueError("--output-dir is required unless --list-fev-tasks is used.")
+
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
     probe_entries = [(path, ProbeArtifact.load(path)) for path in resolve_probe_paths(args)]
@@ -107,7 +143,10 @@ def main() -> None:
         raise ValueError("No continuous probe artifacts were available for transfer evaluation.")
     probes = [probe for _, probe in probe_entries]
 
-    model = load_toto_with_fallback(args.model_id, map_location="cpu")
+    device = resolve_device(args.device)
+    model = load_toto_with_fallback(args.model_id, map_location="cpu", device=device)
+    if args.compile and hasattr(model, "compile"):
+        model.compile()
     patch_size = int(model.model.patch_embed.patch_size)
     if args.context_length % patch_size != 0:
         raise ValueError(f"context-length must be divisible by patch size ({patch_size}).")
@@ -178,6 +217,7 @@ def main() -> None:
                 "model_id": args.model_id,
                 "probe_paths": [str(path) for path, _ in probe_entries],
                 "dataset_mode": args.dataset,
+                "device": device,
                 "trace_config": {
                     "layers": trace_config.layers,
                     "token_positions": trace_config.token_positions,

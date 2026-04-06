@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import warnings
 from pathlib import Path
 
 import numpy as np
@@ -15,6 +16,9 @@ if str(ROOT) not in sys.path:
 
 from toto_interp import ActivationBatch, fit_probe
 from toto_interp.defaults import default_dynamic_label_specs, default_label_specs, default_taxonomy_label_specs
+
+warnings.filterwarnings("ignore", category=RuntimeWarning, module=r"sklearn\.utils\.extmath")
+warnings.filterwarnings("ignore", category=RuntimeWarning, module=r"sklearn\.linear_model\._base")
 
 
 def parse_args() -> argparse.Namespace:
@@ -38,10 +42,12 @@ def choose_label_specs(group: str):
 
 
 def cosine_similarity_matrix(vectors: np.ndarray) -> np.ndarray:
-    vectors = np.nan_to_num(vectors, nan=0.0, posinf=0.0, neginf=0.0)
+    vectors = np.nan_to_num(vectors, nan=0.0, posinf=1e3, neginf=-1e3)
+    vectors = np.clip(vectors, -1e3, 1e3)
     norms = np.linalg.norm(vectors, axis=1, keepdims=True).clip(min=1e-6)
     unit = vectors / norms
-    return unit @ unit.T
+    with np.errstate(over="ignore", divide="ignore", invalid="ignore"):
+        return unit @ unit.T
 
 
 def select_best_localization_row(frame: pd.DataFrame) -> pd.Series | None:
@@ -137,7 +143,8 @@ def main() -> None:
     results_df.to_csv(args.output_dir / "probe_results.csv", index=False)
 
     if vectors:
-        vector_matrix = np.nan_to_num(np.stack(vectors), nan=0.0, posinf=0.0, neginf=0.0)
+        vector_matrix = np.nan_to_num(np.stack(vectors), nan=0.0, posinf=1e3, neginf=-1e3)
+        vector_matrix = np.clip(vector_matrix, -1e3, 1e3)
         cosine_df = pd.DataFrame(cosine_similarity_matrix(vector_matrix), index=vector_names, columns=vector_names)
         cosine_df.to_csv(args.output_dir / "probe_geometry_cosine.csv")
 

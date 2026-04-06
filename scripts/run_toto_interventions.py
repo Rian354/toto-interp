@@ -26,6 +26,7 @@ from toto_interp.boom import (
     split_boom_series_ids,
 )
 from toto_interp.loader import load_toto_with_fallback
+from toto_interp.loader import resolve_device
 from toto_interp.metrics import mase, wape, weighted_quantile_loss
 from toto_interp.types import WindowExample
 
@@ -35,6 +36,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--probe-path", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--model-id", type=str, default="Datadog/Toto-Open-Base-1.0")
+    parser.add_argument("--device", type=str, default="auto")
+    parser.add_argument("--compile", action="store_true")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--context-length", type=int, default=1024)
     parser.add_argument("--max-series", type=int, default=64)
@@ -111,7 +114,10 @@ def main() -> None:
     if probe.layer < 0:
         raise ValueError("run_toto_interventions.py only supports transformer-layer probes, not patch embeddings.")
 
-    model = load_toto_with_fallback(args.model_id, map_location="cpu")
+    device = resolve_device(args.device)
+    model = load_toto_with_fallback(args.model_id, map_location="cpu", device=device)
+    if args.compile and hasattr(model, "compile"):
+        model.compile()
     backbone = model.model
     forecaster = TotoForecaster(backbone)
     patch_size = int(backbone.patch_embed.patch_size)
@@ -251,6 +257,7 @@ def main() -> None:
                 "strengths": args.strengths,
                 "split": args.split,
                 "window_count": len(windows),
+                "device": device,
                 "use_kv_cache": not args.disable_kv_cache,
                 "random_direction": args.random_direction,
             },

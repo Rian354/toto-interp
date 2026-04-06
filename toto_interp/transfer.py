@@ -11,6 +11,7 @@ from datasets import Dataset, load_dataset
 from toto.evaluation.lsf.lsf_datasets import LSFDataset, LSFDatasetName
 
 from .boom import sample_window_starts
+from .fev_tasks import FEVTaskSpec, get_fev_task
 from .labels import compute_dynamic_regime_labels
 from .types import WindowExample
 
@@ -177,6 +178,7 @@ def build_fev_windows(
     config_name: str,
     context_length: int,
     patch_size: int,
+    task_name: str | None = None,
     target_fields: Sequence[str] | None = None,
     ev_fields: Sequence[str] = (),
     max_series: int = 0,
@@ -184,6 +186,10 @@ def build_fev_windows(
     include_heldout_late: bool = False,
     split: str = "transfer",
 ) -> list[WindowExample]:
+    task_spec: FEVTaskSpec | None = get_fev_task(task_name or config_name)
+    if task_spec is not None:
+        target_fields = tuple(target_fields or task_spec.target_fields)
+        ev_fields = tuple(task_spec.exogenous_fields)
     dataset = load_fev_dataset(config_name, split="train")
     return build_fev_windows_from_dataset(
         dataset,
@@ -243,6 +249,7 @@ def build_lsf_windows(
 def collect_transfer_windows(
     *,
     fev_configs: Iterable[str] = (),
+    fev_tasks: Iterable[str] = (),
     lsf_datasets: Iterable[str] = (),
     context_length: int,
     patch_size: int,
@@ -254,6 +261,23 @@ def collect_transfer_windows(
     include_heldout_late: bool = False,
 ) -> list[WindowExample]:
     windows: list[WindowExample] = []
+    for task_name in fev_tasks:
+        task_spec = get_fev_task(task_name)
+        if task_spec is None:
+            raise ValueError(f"Unknown FEV task: {task_name}")
+        windows.extend(
+            build_fev_windows(
+                config_name=task_spec.dataset_config,
+                task_name=task_name,
+                context_length=context_length,
+                patch_size=patch_size,
+                target_fields=task_spec.target_fields,
+                ev_fields=task_spec.exogenous_fields,
+                max_series=max_series,
+                max_windows_per_series=max_windows_per_series,
+                include_heldout_late=include_heldout_late,
+            )
+        )
     for config_name in fev_configs:
         windows.extend(
             build_fev_windows(

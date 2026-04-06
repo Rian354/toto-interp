@@ -29,7 +29,19 @@ def _standardize_train(train_features: np.ndarray) -> tuple[np.ndarray, np.ndarr
 
 
 def _standardize(features: np.ndarray, mean: np.ndarray, std: np.ndarray) -> np.ndarray:
-    return (features - mean) / std
+    standardized = (features - mean) / std
+    standardized = np.nan_to_num(standardized, nan=0.0, posinf=1e3, neginf=-1e3)
+    return np.clip(standardized, -1e3, 1e3)
+
+
+def _sanitize_features(features: np.ndarray) -> np.ndarray:
+    sanitized = np.nan_to_num(features, nan=0.0, posinf=1e3, neginf=-1e3).astype(np.float64, copy=False)
+    return np.clip(sanitized, -1e3, 1e3)
+
+
+def _sanitize_vector(values: np.ndarray) -> np.ndarray:
+    sanitized = np.nan_to_num(values, nan=0.0, posinf=1e3, neginf=-1e3)
+    return np.clip(sanitized, -1e3, 1e3)
 
 
 def _continuous_metrics(y_true: np.ndarray, y_pred: np.ndarray, prefix: str) -> dict[str, float]:
@@ -55,13 +67,15 @@ def _predict_categorical(
     intercept: torch.Tensor,
     class_names: tuple[str, ...],
 ) -> np.ndarray:
-    coef_np = coef.cpu().numpy()
-    intercept_np = intercept.cpu().numpy()
+    coef_np = _sanitize_vector(coef.cpu().numpy())
+    intercept_np = _sanitize_vector(intercept.cpu().numpy())
     if coef_np.shape[0] == 1 and len(class_names) == 2:
-        decision = features @ coef_np[0] + intercept_np[0]
+        with np.errstate(over="ignore", divide="ignore", invalid="ignore"):
+            decision = _sanitize_vector(features @ coef_np[0] + intercept_np[0])
         return np.where(decision > 0, class_names[1], class_names[0])
 
-    logits = features @ coef_np.T + intercept_np
+    with np.errstate(over="ignore", divide="ignore", invalid="ignore"):
+        logits = _sanitize_vector(features @ coef_np.T + intercept_np)
     indices = logits.argmax(axis=1)
     return np.asarray([class_names[index] for index in indices], dtype=object)
 
@@ -80,8 +94,8 @@ def score_probe(
     if len(subset) == 0:
         raise ValueError("No activation records matched the probe view for scoring.")
 
-    X = subset.activations.cpu().numpy()
-    X_raw = subset.raw_features.cpu().numpy()
+    X = _sanitize_features(subset.activations.cpu().numpy())
+    X_raw = _sanitize_features(subset.raw_features.cpu().numpy())
     y = subset.label_array(probe_artifact.label_spec.name)
 
     valid_mask = np.ones(len(subset), dtype=bool)
@@ -136,9 +150,10 @@ def score_probe(
             metrics.update({f"baseline_{k}": v for k, v in _categorical_metrics(y_true, baseline_pred, prefix).items()})
     else:
         y_true = y.astype(np.float64)
-        coef_np = probe_artifact.coef[0].cpu().numpy()
-        intercept_np = float(probe_artifact.intercept[0].cpu().item())
-        y_pred = X_z @ coef_np + intercept_np
+        coef_np = _sanitize_vector(probe_artifact.coef[0].cpu().numpy())
+        intercept_np = float(_sanitize_vector(np.asarray([probe_artifact.intercept[0].cpu().item()]))[0])
+        with np.errstate(over="ignore", divide="ignore", invalid="ignore"):
+            y_pred = _sanitize_vector(X_z @ coef_np + intercept_np)
         metrics = _continuous_metrics(y_true, y_pred, prefix)
 
         if (
@@ -152,9 +167,12 @@ def score_probe(
                 probe_artifact.raw_feature_mean.cpu().numpy(),
                 probe_artifact.raw_feature_std.cpu().numpy(),
             )
-            baseline_coef = probe_artifact.raw_baseline_coef[0].cpu().numpy()
-            baseline_intercept = float(probe_artifact.raw_baseline_intercept[0].cpu().item())
-            baseline_pred = X_raw_z @ baseline_coef + baseline_intercept
+            baseline_coef = _sanitize_vector(probe_artifact.raw_baseline_coef[0].cpu().numpy())
+            baseline_intercept = float(
+                _sanitize_vector(np.asarray([probe_artifact.raw_baseline_intercept[0].cpu().item()]))[0]
+            )
+            with np.errstate(over="ignore", divide="ignore", invalid="ignore"):
+                baseline_pred = _sanitize_vector(X_raw_z @ baseline_coef + baseline_intercept)
             metrics.update(
                 {f"baseline_{k}": v for k, v in _continuous_metrics(y_true, baseline_pred, prefix).items()}
             )
@@ -186,8 +204,8 @@ def fit_probe(
     token_position = str(_unique_value(activation_batch.token_positions, "token position"))
     pooling_mode = str(_unique_value(activation_batch.pooling_modes, "pooling mode"))
 
-    X = activation_batch.activations.cpu().numpy()
-    X_raw = activation_batch.raw_features.cpu().numpy()
+    X = _sanitize_features(activation_batch.activations.cpu().numpy())
+    X_raw = _sanitize_features(activation_batch.raw_features.cpu().numpy())
     y = activation_batch.label_array(label_spec.name)
     splits = activation_batch.splits
 
@@ -292,8 +310,8 @@ def fit_probe(
                     dtype=torch.float32,
                 )
 
-        coef = torch.as_tensor(logistic.coef_, dtype=torch.float32)
-        intercept = torch.as_tensor(logistic.intercept_, dtype=torch.float32)
+        coef = torch.as_tensor(_sanitize_vector(logistic.coef_), dtype=torch.float32)
+        intercept = torch.as_tensor(_sanitize_vector(logistic.intercept_), dtype=torch.float32)
         class_names = tuple(str(name) for name in logistic.classes_)
     else:
         targets = y.astype(np.float64)
@@ -330,8 +348,8 @@ def fit_probe(
                 dtype=torch.float32,
             )
 
-        coef = torch.as_tensor(np.atleast_2d(ridge.coef_), dtype=torch.float32)
-        intercept = torch.as_tensor(np.atleast_1d(ridge.intercept_), dtype=torch.float32)
+        coef = torch.as_tensor(_sanitize_vector(np.atleast_2d(ridge.coef_)), dtype=torch.float32)
+        intercept = torch.as_tensor(_sanitize_vector(np.atleast_1d(ridge.intercept_)), dtype=torch.float32)
 
     return ProbeArtifact(
         label_spec=label_spec,
@@ -350,8 +368,18 @@ def fit_probe(
         raw_feature_mean=torch.as_tensor(raw_mean, dtype=torch.float32),
         raw_feature_std=torch.as_tensor(raw_std, dtype=torch.float32),
         raw_baseline_feature_names=activation_batch.raw_feature_names,
-        raw_baseline_coef=torch.as_tensor(np.atleast_2d(raw_logistic.coef_ if resolved_task_type == "categorical" else raw_ridge.coef_), dtype=torch.float32),
-        raw_baseline_intercept=torch.as_tensor(np.atleast_1d(raw_logistic.intercept_ if resolved_task_type == "categorical" else raw_ridge.intercept_), dtype=torch.float32),
+        raw_baseline_coef=torch.as_tensor(
+            _sanitize_vector(
+                np.atleast_2d(raw_logistic.coef_ if resolved_task_type == "categorical" else raw_ridge.coef_)
+            ),
+            dtype=torch.float32,
+        ),
+        raw_baseline_intercept=torch.as_tensor(
+            _sanitize_vector(
+                np.atleast_1d(raw_logistic.intercept_ if resolved_task_type == "categorical" else raw_ridge.intercept_)
+            ),
+            dtype=torch.float32,
+        ),
         positive_threshold=positive_threshold,
         negative_threshold=negative_threshold,
     )

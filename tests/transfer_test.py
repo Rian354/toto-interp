@@ -5,7 +5,7 @@ from pathlib import Path
 import pandas as pd
 from datasets import Dataset
 
-from toto_interp.transfer import build_fev_windows_from_dataset, build_lsf_windows
+from toto_interp.transfer import build_fev_windows, build_fev_windows_from_dataset, build_lsf_windows
 
 
 def test_build_fev_windows_from_dataset_supports_auto_target_detection():
@@ -63,3 +63,30 @@ def test_build_lsf_windows_reads_local_custom_dataset(tmp_path: Path):
     assert windows[0].labels["benchmark_name"] == "lsf"
     assert windows[0].labels["dataset_name"] == "electricity"
     assert windows[0].num_target_variates == 2
+
+
+def test_build_fev_windows_uses_official_task_metadata(monkeypatch):
+    dataset = Dataset.from_dict(
+        {
+            "id": ["series-a"],
+            "timestamp": [pd.date_range("2024-01-01", periods=24, freq="h").to_numpy()],
+            "target": [list(range(24))],
+            "Generation forecast": [list(range(100, 124))],
+            "System load forecast": [list(range(200, 224))],
+        }
+    )
+    dataset.set_format("numpy")
+
+    monkeypatch.setattr("toto_interp.transfer.load_fev_dataset", lambda config_name, split="train": dataset)
+
+    windows = build_fev_windows(
+        config_name="epf_be",
+        task_name="epf_be",
+        context_length=8,
+        patch_size=4,
+        max_series=1,
+        max_windows_per_series=3,
+    )
+
+    assert len(windows) == 2
+    assert windows[0].num_target_variates == 1

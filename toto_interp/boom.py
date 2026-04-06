@@ -8,7 +8,7 @@ from typing import Any, Iterable
 import numpy as np
 import torch
 from datasets import load_from_disk
-from huggingface_hub import hf_hub_download, snapshot_download
+from huggingface_hub import hf_hub_download, list_repo_files, snapshot_download
 
 from toto.data.util.dataset import MaskedTimeseries
 
@@ -22,6 +22,33 @@ def load_boom_taxonomy(repo_id: str = BOOM_REPO_ID) -> dict[str, dict[str, Any]]
     path = hf_hub_download(repo_id, "dataset_taxonomy.json", repo_type="dataset")
     with open(path, "r") as handle:
         return json.load(handle)
+
+
+def download_full_boom_dataset(local_path: str | Path, *, repo_id: str = BOOM_REPO_ID) -> Path:
+    """
+    Download the full BOOM dataset repository to a local directory.
+
+    This ports the practical notebook helper shipped in the upstream Toto repo
+    into the standalone interpretability package so users do not need that repo
+    checked out locally.
+    """
+
+    local_root = Path(local_path).expanduser().resolve()
+    local_root.mkdir(parents=True, exist_ok=True)
+    dataset_dir = local_root / "boom_benchmark"
+    if dataset_dir.exists():
+        return dataset_dir
+
+    dataset_dir.mkdir(parents=True, exist_ok=True)
+    for file_name in list_repo_files(repo_id, repo_type="dataset"):
+        hf_hub_download(
+            repo_id=repo_id,
+            filename=file_name,
+            local_dir=str(dataset_dir),
+            local_dir_use_symlinks=False,
+            repo_type="dataset",
+        )
+    return dataset_dir
 
 
 def split_boom_series_ids(

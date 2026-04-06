@@ -10,6 +10,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from toto_interp import TraceConfig, extract_activations, load_toto_with_fallback
+from toto_interp.loader import resolve_device
 from toto_interp.boom import (
     build_boom_windows,
     ensure_boom_snapshot,
@@ -22,6 +23,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Dump Toto activation traces for BOOM research windows.")
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--model-id", type=str, default="Datadog/Toto-Open-Base-1.0")
+    parser.add_argument("--device", type=str, default="auto")
+    parser.add_argument("--compile", action="store_true")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--context-length", type=int, default=1024)
     parser.add_argument("--max-windows-per-series", type=int, default=16)
@@ -35,7 +38,10 @@ def main() -> None:
     args = parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
-    model = load_toto_with_fallback(args.model_id, map_location="cpu")
+    device = resolve_device(args.device)
+    model = load_toto_with_fallback(args.model_id, map_location="cpu", device=device)
+    if args.compile and hasattr(model, "compile"):
+        model.compile()
     backbone = model.model
     patch_size = int(backbone.patch_embed.patch_size)
 
@@ -59,6 +65,7 @@ def main() -> None:
         "model_id": args.model_id,
         "patch_size": patch_size,
         "context_length": args.context_length,
+        "device": device,
         "trace_config": {
             "layers": trace_config.layers,
             "token_positions": trace_config.token_positions,
