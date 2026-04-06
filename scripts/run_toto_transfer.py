@@ -1,0 +1,195 @@
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+import pandas as pd
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from toto_interp import ProbeArtifact, TraceConfig, extract_activations, load_toto_with_fallback, score_probe
+from toto_interp.transfer import build_fev_windows, build_lsf_windows
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Run zero-shot BOOM probe transfer on FEV and LSF datasets.")
+    parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument("--model-id", type=str, default="Datadog/Toto-Open-Base-1.0")
+    parser.add_argument("--probe-paths", type=Path, nargs="*", default=None)
+    parser.add_argument("--probe-dir", type=Path, default=None)
+    parser.add_argument("--dataset", choices=("fev", "lsf", "both"), default="both")
+    parser.add_argument("--context-length", type=int, default=1024)
+    parser.add_argument("--max-series", type=int, default=8)
+    parser.add_argument("--max-windows-per-series", type=int, default=4)
+    parser.add_argument("--include-heldout-late", action="store_true")
+    parser.add_argument("--disable-kv-cache", action="store_true")
+    parser.add_argument("--fev-configs", nargs="*", default=["ETT_15T"])
+    parser.add_argument("--fev-target-fields", nargs="*", default=None)
+    parser.add_argument("--fev-ev-fields", nargs="*", default=[])
+    parser.add_argument("--lsf-datasets", nargs="*", default=["ETTh1"])
+    parser.add_argument("--lsf-path", type=Path, default=None)
+    return parser.parse_args()
+
+
+def resolve_probe_paths(args: argparse.Namespace) -> list[Path]:
+    if args.probe_paths:
+        return list(args.probe_paths)
+    if args.probe_dir is None:
+        raise ValueError("Provide either --probe-paths or --probe-dir.")
+
+    localization_path = args.probe_dir / "probe_localization_summary.csv"
+    if localization_path.exists():
+        df = pd.read_csv(localization_path)
+        df = df[df["task_type"] == "continuous"]
+        if "label" in df.columns:
+            allowed = {
+                "current_sparsity",
+                "future_sparsity",
+                "current_burstiness",
+                "future_burstiness",
+                "shift_risk",
+                "coordination",
+            }
+            df = df[df["label"].isin(allowed)]
+        return [Path(path) for path in df["artifact_path"].tolist()]
+
+    return sorted((args.probe_dir / "artifacts").glob("*.pt"))
+
+
+def build_windows_for_dataset(
+    args: argparse.Namespace,
+    *,
+    benchmark_name: str,
+    patch_size: int,
+) -> dict[str, list]:
+    datasets_to_windows: dict[str, list] = {}
+    if benchmark_name == "fev":
+        for config_name in args.fev_configs:
+            datasets_to_windows[config_name] = build_fev_windows(
+                config_name=config_name,
+                context_length=args.context_length,
+                patch_size=patch_size,
+                target_fields=args.fev_target_fields,
+                ev_fields=args.fev_ev_fields,
+                max_series=args.max_series,
+                max_windows_per_series=args.max_windows_per_series,
+                include_heldout_late=args.include_heldout_late,
+            )
+    elif benchmark_name == "lsf":
+        if args.lsf_path is None:
+            raise ValueError("--lsf-path is required for LSF transfer evaluation.")
+        for dataset_name in args.lsf_datasets:
+            datasets_to_windows[dataset_name] = build_lsf_windows(
+                dataset_name=dataset_name,
+                context_length=args.context_length,
+                patch_size=patch_size,
+                lsf_path=args.lsf_path,
+                max_series=args.max_series,
+                max_windows_per_series=args.max_windows_per_series,
+                include_heldout_late=args.include_heldout_late,
+            )
+    else:
+        raise ValueError(f"Unsupported benchmark name: {benchmark_name}")
+    return datasets_to_windows
+
+
+def main() -> None:
+    args = parse_args()
+    args.output_dir.mkdir(parents=True, exist_ok=True)
+
+    probe_entries = [(path, ProbeArtifact.load(path)) for path in resolve_probe_paths(args)]
+    probe_entries = [(path, probe) for path, probe in probe_entries if probe.label_spec.task_type == "continuous"]
+    if not probe_entries:
+        raise ValueError("No continuous probe artifacts were available for transfer evaluation.")
+    probes = [probe for _, probe in probe_entries]
+
+    model = load_toto_with_fallback(args.model_id, map_location="cpu")
+    patch_size = int(model.model.patch_embed.patch_size)
+    if args.context_length % patch_size != 0:
+        raise ValueError(f"context-length must be divisible by patch size ({patch_size}).")
+
+    trace_config = TraceConfig(
+        layers=tuple(sorted({probe.layer for probe in probes if probe.layer >= 0})),
+        token_positions=tuple(sorted({probe.token_position for probe in probes})),
+        pooling_modes=tuple(sorted({probe.pooling_mode for probe in probes})),
+        capture_patch_embedding=any(probe.layer == -1 for probe in probes),
+        use_kv_cache=not args.disable_kv_cache,
+    )
+
+    benchmarks: list[str]
+    if args.dataset == "both":
+        benchmarks = ["fev", "lsf"]
+    else:
+        benchmarks = [args.dataset]
+
+    rows: list[dict[str, object]] = []
+    dataset_meta: dict[str, dict[str, object]] = {}
+    for benchmark_name in benchmarks:
+        for dataset_name, windows in build_windows_for_dataset(args, benchmark_name=benchmark_name, patch_size=patch_size).items():
+            if not windows:
+                continue
+            activation_batch = extract_activations(model, windows, trace_config)
+            dataset_meta[f"{benchmark_name}:{dataset_name}"] = {
+                "window_count": len(windows),
+                "series_count": len({window.series_id for window in windows}),
+            }
+            for probe_path, probe in probe_entries:
+                metrics = score_probe(activation_batch, probe, prefix="transfer")
+                row = {
+                    "benchmark": benchmark_name,
+                    "dataset_name": dataset_name,
+                    "probe_label": probe.label_spec.name,
+                    "probe_path": str(probe_path),
+                    "layer": probe.layer,
+                    "token_position": probe.token_position,
+                    "pooling_mode": probe.pooling_mode,
+                }
+                row.update(metrics)
+                rows.append(row)
+
+    results_df = pd.DataFrame(rows)
+    if not results_df.empty:
+        results_df = results_df.sort_values(["benchmark", "dataset_name", "probe_label", "layer", "token_position"])
+    results_df.to_csv(args.output_dir / "transfer_probe_metrics.csv", index=False)
+
+    if not results_df.empty:
+        aggregations: dict[str, tuple[str, str]] = {"dataset_count": ("dataset_name", "nunique")}
+        for column in (
+            "transfer_r2",
+            "baseline_transfer_r2",
+            "transfer_rmse",
+            "baseline_transfer_rmse",
+            "transfer_mae",
+            "baseline_transfer_mae",
+            "transfer_count",
+        ):
+            if column in results_df.columns:
+                aggregations[column] = (column, "mean")
+        summary_df = results_df.groupby(["benchmark", "probe_label"], dropna=False).agg(**aggregations).reset_index()
+        summary_df.to_csv(args.output_dir / "transfer_summary.csv", index=False)
+
+    with open(args.output_dir / "transfer_meta.json", "w") as handle:
+        json.dump(
+            {
+                "model_id": args.model_id,
+                "probe_paths": [str(path) for path, _ in probe_entries],
+                "dataset_mode": args.dataset,
+                "trace_config": {
+                    "layers": trace_config.layers,
+                    "token_positions": trace_config.token_positions,
+                    "pooling_modes": trace_config.pooling_modes,
+                    "use_kv_cache": trace_config.use_kv_cache,
+                },
+                "datasets": dataset_meta,
+            },
+            handle,
+            indent=2,
+        )
+
+
+if __name__ == "__main__":
+    main()
