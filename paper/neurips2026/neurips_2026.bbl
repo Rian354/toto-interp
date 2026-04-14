@@ -1,0 +1,55 @@
+\begin{thebibliography}{7}
+\providecommand{\natexlab}[1]{#1}
+\providecommand{\url}[1]{\texttt{#1}}
+\expandafter\ifx\csname urlstyle\endcsname\relax
+  \providecommand{\doi}[1]{doi: #1}\else
+  \providecommand{\doi}{doi: \begingroup \urlstyle{rm}\Url}\fi
+
+\bibitem[Alain and Bengio(2016)]{alain2016understanding}
+Guillaume Alain and Yoshua Bengio.
+\newblock Understanding intermediate layers using linear classifier probes.
+\newblock \emph{arXiv preprint arXiv:1610.01644}, 2016.
+\newblock URL \url{https://arxiv.org/abs/1610.01644}.
+
+\bibitem[{Datadog}(2025{\natexlab{a}})]{datadog2025boom}
+{Datadog}.
+\newblock {BOOM}: Benchmark of observability metrics.
+\newblock Hugging Face dataset card, 2025{\natexlab{a}}.
+\newblock URL \url{https://huggingface.co/datasets/Datadog/BOOM}.
+
+\bibitem[{Datadog}(2025{\natexlab{b}})]{datadog2025toto}
+{Datadog}.
+\newblock {Toto-Open-Base-1.0}.
+\newblock Hugging Face model card, 2025{\natexlab{b}}.
+\newblock URL \url{https://huggingface.co/Datadog/Toto-Open-Base-1.0}.
+
+\bibitem[K{\"a}stner and Crook(2024)]{kastner2024mechanistic}
+Lena K{\"a}stner and Barnaby Crook.
+\newblock Explaining {AI} through mechanistic interpretability.
+\newblock \emph{European Journal for Philosophy of Science}, 14\penalty0
+  (4):\penalty0 1--28, 2024.
+\newblock URL \url{https://doi.org/10.1007/s13194-024-00614-4}.
+
+\bibitem[Shchur et~al.(2025)Shchur, S{\"a}fken, Januschowski, Stella, Callot,
+  Wang, Turkmen, Bhargava, et~al.]{shchur2025fev}
+Oleksandr Shchur, Benjamin S{\"a}fken, Tim Januschowski, Lorenzo Stella,
+  Laurent Callot, Yuyang Wang, Ali Turkmen, Aniruddh Bhargava, et~al.
+\newblock {FEV}: An evaluation framework for time series forecasting.
+\newblock arXiv preprint arXiv:2501.15122, 2025.
+\newblock URL \url{https://arxiv.org/abs/2501.15122}.
+
+\bibitem[{THUML}(2024)]{thuml2024tslib}
+{THUML}.
+\newblock Time-series-library.
+\newblock GitHub repository, 2024.
+\newblock URL \url{https://github.com/thuml/Time-Series-Library}.
+
+\bibitem[Turner et~al.(2024)Turner, Gabrieli, Schulz, Tong, Hubinger, and
+  Panickssery]{turner2024steering}
+Alexander~Matt Turner, Nick Gabrieli, Julian Schulz, Meg Tong, Evan Hubinger,
+  and Nina Panickssery.
+\newblock Steering llama 2 via contrastive activation addition.
+\newblock \emph{arXiv preprint arXiv:2312.06681}, 2024.
+\newblock URL \url{https://arxiv.org/abs/2312.06681}.
+
+\end{thebibliography}
