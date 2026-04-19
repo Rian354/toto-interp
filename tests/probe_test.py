@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import torch
 
-from toto_interp import ActivationBatch, LabelSpec, fit_probe, score_probe
+from toto_interp import ActivationBatch, LabelSpec, WindowDataset, fit_fno_probe, fit_probe, score_probe
+from toto_interp.fno import FNOConfig
 from toto_interp.labels import RAW_FEATURE_NAMES
+from toto_interp.types import WindowExample
 
 
 def _make_synthetic_batch() -> ActivationBatch:
@@ -67,3 +69,69 @@ def test_score_probe_reuses_frozen_probe_and_raw_baseline():
     assert metrics["transfer_r2"] > 0.9
     assert "baseline_transfer_r2" in metrics
     assert metrics["transfer_count"] == float(len(batch))
+
+
+def test_window_dataset_from_windows_pads_variable_variate_counts():
+    base_window = WindowExample(
+        series_id="series-a",
+        window_id="series-a:0",
+        split="train",
+        context=torch.ones(2, 8),
+        next_patch=torch.ones(2, 4),
+        patch_size=4,
+        freq="1min",
+        item_id="item-a",
+        num_target_variates=2,
+        labels={"shift_risk": 0.1, "band": "low"},
+    )
+    second_window = WindowExample(
+        series_id="series-b",
+        window_id="series-b:0",
+        split="val",
+        context=torch.ones(3, 8),
+        next_patch=torch.ones(3, 4),
+        patch_size=4,
+        freq="1min",
+        item_id="item-b",
+        num_target_variates=3,
+        labels={"shift_risk": 0.2, "band": "high"},
+    )
+
+    dataset = WindowDataset.from_windows([base_window, second_window])
+
+    assert dataset.contexts.shape == (2, 3, 8)
+    assert dataset.next_patches.shape == (2, 3, 4)
+    assert dataset.variate_mask.tolist() == [[True, True, False], [True, True, True]]
+
+
+def test_fit_fno_probe_returns_method_tagged_artifact():
+    windows = []
+    for idx in range(24):
+        split = "train" if idx < 16 else "val" if idx < 20 else "test"
+        value = float(idx)
+        windows.append(
+            WindowExample(
+                series_id=f"series-{idx}",
+                window_id=f"series-{idx}:0",
+                split=split,
+                context=torch.full((2, 8), value, dtype=torch.float32),
+                next_patch=torch.full((2, 4), value + 1.0, dtype=torch.float32),
+                patch_size=4,
+                freq="1min",
+                item_id=f"item-{idx}",
+                num_target_variates=2,
+                labels={"shift_risk": value, "band": "high" if idx >= 12 else "low"},
+            )
+        )
+    dataset = WindowDataset.from_windows(windows)
+
+    artifact = fit_fno_probe(
+        dataset,
+        LabelSpec(name="shift_risk", task_type="continuous"),
+        config=FNOConfig(epochs=2, batch_size=8, width=8, modes=4, layers=2, seed=0),
+    )
+
+    assert artifact.method == "fno"
+    assert artifact.layer == -2
+    assert "test_r2" in artifact.metrics
+    assert artifact.raw_baseline_feature_names == RAW_FEATURE_NAMES

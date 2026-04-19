@@ -3,6 +3,7 @@ from .bootstrap import ensure_toto_importable
 ensure_toto_importable()
 
 from .fev_tasks import FEVTaskSpec, get_fev_task, list_fev_tasks
+from .fno import FNOConfig, fit_fno_probe
 from .intervention import apply_intervention
 from .lsf import (
     default_lsf_data_path,
@@ -21,16 +22,19 @@ from .types import (
     LabelSpec,
     ProbeArtifact,
     TraceConfig,
+    WindowDataset,
     WindowExample,
 )
 
 __all__ = [
     "ActivationBatch",
     "FEVTaskSpec",
+    "FNOConfig",
     "InterventionConfig",
     "LabelSpec",
     "ProbeArtifact",
     "TraceConfig",
+    "WindowDataset",
     "WindowExample",
     "apply_intervention",
     "build_fev_windows",
@@ -41,6 +45,7 @@ __all__ = [
     "ensure_lsf_datasets",
     "ensure_toto_importable",
     "extract_activations",
+    "fit_fno_probe",
     "fit_probe",
     "get_fev_task",
     "list_fev_tasks",

@@ -35,7 +35,7 @@
 \maketitle
 
 \begin{abstract}
-Time-series foundation models are increasingly used for forecasting, monitoring, and operational decision support, but their internal representations remain poorly understood. We study \model{}, a multivariate forecasting foundation model, and ask whether its residual-stream states linearly encode observability-native concepts such as metric type, domain, sparsity, burstiness, shift risk, and multivariate coordination. We draft an end-to-end interpretability study around a reproducible research pipeline that traces patch-token activations, derives structural and dynamic labels from \boom{}, fits linear probes with raw-feature and shuffled-label controls, analyzes localization and geometry across layers and token views, and tests causal relevance through activation ablation and steering during forecasting. We further define zero-shot transfer tests on \fev{} and \lsf{} to evaluate whether \boom{}-trained dynamic probes capture benchmark-agnostic temporal regimes. This draft is grounded in the implemented codebase and the current research plan; numerical results, figure panels, and exact experimental counts remain marked as placeholders pending full-scale runs.
+Time-series foundation models are increasingly used for forecasting, monitoring, and operational decision support, but their internal representations remain poorly understood. We study \model{}, a multivariate forecasting foundation model, and ask whether its hidden states linearly encode observability-native concepts such as metric type, domain, sparsity, burstiness, shift risk, and multivariate coordination. The broader study still includes structural decoding, localization, interventions, geometry, and optional \boom{}\,$\rightarrow$\,\fev{}/\lsf{} transfer, but the current experimental emphasis is intentionally narrower: operational regimes should be more linearly recoverable from the pretrained \model{} representation than from stronger controls such as raw-feature baselines, shuffled labels, randomized-weight checkpoints, and a nonlinear raw-window FNO baseline. This draft is grounded in the implemented codebase; numerical results, figure panels, and exact experimental counts remain marked as placeholders pending full-scale runs.
 \end{abstract}
 
 \section{Introduction}
@@ -49,22 +49,22 @@ We study \model{}, a public time-series foundation model for multivariate foreca
 \paragraph{Draft status.}
 This manuscript is a paper-structured rough draft derived from the current repository, a prior long-form outline, and the active implementation roadmap. The method description and experimental framing match code that already exists in the repo; exact metrics, figure panels, and some benchmark counts are still represented with explicit placeholders.
 
-Our working thesis is that a time-series foundation model can contain internal representations of operational concepts that are both linearly accessible and behaviorally relevant. We decompose that thesis into three testable claims:
+Our working thesis is that a time-series foundation model can contain internal representations of operational concepts that are both linearly accessible and behaviorally relevant. For the strongest main-track version of the paper, we decompose that thesis into three testable claims:
 \begin{enumerate}[leftmargin=18pt]
-\item structural and regime-level concepts should be decodable from residual activations above simple raw-patch baselines;
-\item those concepts should localize non-uniformly across layers, token positions, and pooling views; and
-\item intervening on selected concept directions should alter forecast behavior in conceptually coherent ways.
+\item operational regime variables should be decodable from residual activations above raw-feature, shuffled-label, randomized-weight, and nonlinear raw-window controls;
+\item the strongest operational concepts should localize non-uniformly across layers, token positions, and pooling views; and
+\item intervening on selected operational directions should alter forecast behavior in conceptually coherent ways.
 \end{enumerate}
 
-The paper also stays explicit about scope. The current study is centered on a frozen pretrained \model{} checkpoint and linear probes. The accompanying research plan extends this baseline with randomized-weight controls, method selection between linear probes and an FNO-style supervised baseline, and optional checkpoint-loading for future fine-tuning studies. We treat those additions as follow-on controls rather than current claims.
+The paper also stays explicit about scope. The current study is centered on a frozen pretrained \model{} checkpoint and linear probes. The codebase now also supports randomized-weight controls, method selection between linear probes and an FNO-style supervised baseline, and checkpoint-source metadata for future checkpoint comparisons. We treat those additions as controls and comparison axes rather than as replacements for the main interpretability claim.
 
 \paragraph{Contributions.}
 This draft makes the following concrete contributions:
 \begin{enumerate}[leftmargin=18pt]
 \item It defines a reproducible, clone-free interpretability pipeline for \model{}, spanning activation tracing, label construction, probe fitting, causal interventions, transfer evaluation, and automated report generation.
-\item It studies two concept families for operational time series: structural observability concepts and dynamic operating-regime concepts.
-\item It organizes a NeurIPS-ready empirical narrative around the implemented workflow, including placeholders for structural decoding, dynamic localization, geometry, intervention, and transfer results.
-\item It incorporates a principled roadmap for the next control experiments: randomized-weight baselines, dynamic method selection, and checkpoint-source metadata.
+\item It keeps the original broader study intact while foregrounding an operational-regime control track as the strongest main empirical story.
+\item It incorporates stronger implemented controls for reviewer-facing attacks: raw-feature baselines, shuffled labels, randomized-weight backbones, and a nonlinear raw-window FNO comparison.
+\item It keeps geometry and transfer as implemented secondary analyses that can be moved to an appendix if they are not decisive in the final runs.
 \end{enumerate}
 
 \section{Related Work}
@@ -247,9 +247,9 @@ The repo also exposes single-stage entrypoints for activation dumping, probe fit
 \section{Results Draft}
 \label{sec:results}
 
-This section keeps the result narrative in place while leaving empirical values to be filled from the final run artifacts.
+This section keeps the result narrative in place while leaving empirical values to be filled from the final run artifacts. The recommended main-track presentation is deliberately narrow: emphasize operational-regime decoding under strong controls first, include intervention only if it is clean, and move geometry or transfer to the appendix unless those sections are clearly decisive.
 
-\subsection{Structural observability concepts are linearly decodable}
+\subsection{Structural observability concepts are supporting evidence}
 
 The first question is whether \model{} represents \boom{} taxonomy concepts above raw last-patch baselines. The expected table should summarize the best-performing view for each structural concept together with its matched raw-feature baseline.
 
@@ -270,7 +270,7 @@ Cardinality bucket & \tbd{L} & \tbd{view} & \tbd{pool} & \tbd{score} & \tbd{scor
 \label{tab:structural}
 \end{table*}
 
-The interpretation to verify is straightforward: if activation-based probes consistently beat raw-patch statistics, then \model{} is not only tracking local values but also organizing telemetry semantics in its hidden states.
+The interpretation to verify is straightforward: if activation-based probes consistently beat raw-patch statistics, then \model{} is not only tracking local values but also organizing telemetry semantics in its hidden states. But this section should remain supporting evidence unless the structural gains are materially stronger than the operational ones.
 
 \subsection{Dynamic operating-regime concepts exhibit structured localization}
 
@@ -304,7 +304,7 @@ Coordination & \tbd{L} & \tbd{view} & \tbd{pool} & \tbd{score} & \tbd{score} & \
 
 \subsection{The space-wise layer may be especially relevant for multivariate concepts}
 
-The repo already highlights a testable architectural claim: layer 11, the space-wise mixing stage, may be disproportionately useful for coordination and cardinality. The final write-up should compare layer 11 to neighboring layers and report whether the gain is consistent across splits and label types.
+The repo already highlights a testable architectural claim: layer 11, the space-wise mixing stage, may be disproportionately useful for coordination and cardinality. This is worth keeping only if the effect survives the stronger controls; otherwise it should be treated as a secondary localization observation rather than a headline contribution.
 
 \begin{figure}[t]
 \centering
@@ -315,7 +315,7 @@ The repo already highlights a testable architectural claim: layer 11, the space-
 
 \subsection{Geometry reveals relationships between operational concepts}
 
-The geometry artifacts exported by the repo support a more structural analysis of concept space. In the final paper this section should answer whether current and future versions of the same regime cluster together, whether sparsity and burstiness remain distinct axes, and whether multivariate concepts form a separate substructure.
+The geometry artifacts exported by the repo support a more structural analysis of concept space. In the final paper this section should answer whether current and future versions of the same regime cluster together, whether sparsity and burstiness remain distinct axes, and whether multivariate concepts form a separate substructure. If these patterns are only modestly suggestive, the section should move to the appendix.
 
 \begin{figure}[t]
 \centering
@@ -354,7 +354,7 @@ Coordination & \tbd{mode} & \tbd{range} & \tbd{effect} & \tbd{effect} & \tbd{eff
 
 \subsection{\boom{}-trained dynamic probes transfer out of domain}
 
-The transfer analysis tests whether regime probes learned on observability data remain informative on non-observability forecasting tasks. Even partial transfer for regime-like variables such as sparsity or burstiness would support the view that the learned directions are not purely \boom{}-specific artifacts.
+The transfer analysis tests whether regime probes learned on observability data remain informative on non-observability forecasting tasks. This is valuable only if it lands cleanly; weak or mixed \boom{}\,$\rightarrow$\,\fev{}/\lsf{} transfer should be moved to the appendix rather than allowed to dilute the main claim.
 
 \begin{table*}[t]
 \centering
@@ -375,22 +375,22 @@ Coordination & \tbd{delta} & \tbd{delta} & \tbd{note} \\
 \label{tab:transfer}
 \end{table*}
 
-\section{Planned Controls and Extensions}
+\section{Controls and Extensions}
 \label{sec:plan}
 
-The active research plan extends the current frozen-pretrained linear-probe study in three focused ways.
+The current implementation extends the frozen-pretrained linear-probe study in three focused ways.
 
 \subsection{Randomized-weight controls}
 
-The most important near-term control is to distinguish representational structure learned during pretraining from structure that arises from architecture alone. The planned loader extension therefore adds explicit model-source metadata for \texttt{pretrained}, \texttt{random\_init}, and \texttt{checkpoint} weight modes. The minimum viable control is full-model reinitialization after loading the public architecture.
+The most important control is to distinguish representational structure learned during pretraining from structure that arises from architecture alone. The loader now supports explicit model-source metadata for \texttt{pretrained}, \texttt{random\_init}, and \texttt{checkpoint} weight modes. The minimum viable control is full-model reinitialization after loading the public architecture.
 
 \subsection{Method selection beyond linear probes}
 
-The paper's current claims are intentionally probe-centered because interpretability depends on linear accessibility. The roadmap nevertheless adds runtime method selection between the current linear probe backend and an FNO-style supervised baseline trained on raw windows. This should be presented as a supervised comparison point rather than an interpretability artifact: localization and intervention claims remain tied to activation-backed linear probes unless a separate causal story is justified.
+The paper's current claims are intentionally probe-centered because interpretability depends on linear accessibility. The codebase therefore supports runtime method selection between the current linear probe backend and an FNO-style supervised baseline trained on raw windows. This should be presented as a supervised comparison point rather than an interpretability artifact: localization and intervention claims remain tied to activation-backed linear probes unless a separate causal story is justified.
 
 \subsection{Checkpoint-source and training-mode metadata}
 
-The plan also formalizes distinctions that the paper should eventually report explicitly:
+The implementation also formalizes distinctions that the paper should report explicitly:
 \begin{itemize}[leftmargin=18pt]
 \item backbone source: pretrained checkpoint, randomized weights, or user-provided checkpoint;
 \item backbone train mode: frozen or trainable; and

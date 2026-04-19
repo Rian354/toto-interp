@@ -24,6 +24,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--model-id", type=str, default="Datadog/Toto-Open-Base-1.0")
     parser.add_argument("--device", type=str, default="auto")
     parser.add_argument("--compile", action="store_true")
+    parser.add_argument("--weight-source", choices=("pretrained", "random_init", "checkpoint"), default="pretrained")
+    parser.add_argument("--checkpoint-path", type=Path, default=None)
+    parser.add_argument("--randomize-scope", choices=("full", "selected_layers", "head_only"), default="full")
+    parser.add_argument("--randomize-layers", type=int, nargs="*", default=[])
     parser.add_argument("--probe-paths", type=Path, nargs="*", default=None)
     parser.add_argument("--probe-dir", type=Path, default=None)
     parser.add_argument("--dataset", choices=("fev", "lsf", "both"), default="both")
@@ -53,7 +57,7 @@ def resolve_probe_paths(args: argparse.Namespace) -> list[Path]:
     localization_path = args.probe_dir / "probe_localization_summary.csv"
     if localization_path.exists():
         df = pd.read_csv(localization_path)
-        df = df[df["task_type"] == "continuous"]
+        df = df[(df["task_type"] == "continuous") & (df.get("method", "linear_probe") == "linear_probe")]
         if "label" in df.columns:
             allowed = {
                 "current_sparsity",
@@ -66,7 +70,13 @@ def resolve_probe_paths(args: argparse.Namespace) -> list[Path]:
             df = df[df["label"].isin(allowed)]
         return [Path(path) for path in df["artifact_path"].tolist()]
 
-    return sorted((args.probe_dir / "artifacts").glob("*.pt"))
+    artifact_paths = sorted((args.probe_dir / "artifacts").glob("*.pt"))
+    filtered_paths: list[Path] = []
+    for path in artifact_paths:
+        probe = ProbeArtifact.load(path)
+        if probe.method == "linear_probe":
+            filtered_paths.append(path)
+    return filtered_paths
 
 
 def build_windows_for_dataset(
@@ -150,13 +160,25 @@ def main() -> None:
         args.lsf_path = resolved_lsf_path
 
     probe_entries = [(path, ProbeArtifact.load(path)) for path in resolve_probe_paths(args)]
-    probe_entries = [(path, probe) for path, probe in probe_entries if probe.label_spec.task_type == "continuous"]
+    probe_entries = [
+        (path, probe)
+        for path, probe in probe_entries
+        if probe.label_spec.task_type == "continuous" and probe.method == "linear_probe"
+    ]
     if not probe_entries:
         raise ValueError("No continuous probe artifacts were available for transfer evaluation.")
     probes = [probe for _, probe in probe_entries]
 
     device = resolve_device(args.device)
-    model = load_toto_with_fallback(args.model_id, map_location="cpu", device=device)
+    model = load_toto_with_fallback(
+        args.model_id,
+        map_location="cpu",
+        device=device,
+        weight_source=args.weight_source,
+        checkpoint_path=args.checkpoint_path,
+        randomize_scope=args.randomize_scope,
+        randomize_layers=tuple(args.randomize_layers),
+    )
     if args.compile and hasattr(model, "compile"):
         model.compile()
     patch_size = int(model.model.patch_embed.patch_size)
@@ -230,6 +252,10 @@ def main() -> None:
                 "probe_paths": [str(path) for path, _ in probe_entries],
                 "dataset_mode": args.dataset,
                 "device": device,
+                "weight_source": args.weight_source,
+                "checkpoint_path": None if args.checkpoint_path is None else str(args.checkpoint_path),
+                "randomize_scope": args.randomize_scope,
+                "randomize_layers": args.randomize_layers,
                 "trace_config": {
                     "layers": trace_config.layers,
                     "token_positions": trace_config.token_positions,
