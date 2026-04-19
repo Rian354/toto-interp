@@ -14,6 +14,8 @@ def test_write_report_renders_markdown_and_summary(tmp_path: Path):
             {
                 "label": "metric_type",
                 "task_type": "categorical",
+                "method": "linear_probe",
+                "weight_source": "pretrained",
                 "layer": 8,
                 "token_position": "final_context",
                 "pooling_mode": "series_mean",
@@ -23,6 +25,8 @@ def test_write_report_renders_markdown_and_summary(tmp_path: Path):
             {
                 "label": "shift_risk",
                 "task_type": "continuous",
+                "method": "linear_probe",
+                "weight_source": "pretrained",
                 "layer": 10,
                 "token_position": "first_decode",
                 "pooling_mode": "series_mean",
@@ -32,6 +36,8 @@ def test_write_report_renders_markdown_and_summary(tmp_path: Path):
             {
                 "label": "coordination",
                 "task_type": "continuous",
+                "method": "linear_probe",
+                "weight_source": "pretrained",
                 "layer": 11,
                 "token_position": "first_decode",
                 "pooling_mode": "series_mean",
@@ -41,11 +47,35 @@ def test_write_report_renders_markdown_and_summary(tmp_path: Path):
             {
                 "label": "cardinality_bucket",
                 "task_type": "categorical",
+                "method": "linear_probe",
+                "weight_source": "pretrained",
                 "layer": 11,
                 "token_position": "final_context",
                 "pooling_mode": "series_mean",
                 "test_accuracy": 0.76,
                 "baseline_test_accuracy": 0.63,
+            },
+            {
+                "label": "shift_risk",
+                "task_type": "continuous",
+                "method": "fno",
+                "weight_source": "pretrained",
+                "layer": -2,
+                "token_position": "window",
+                "pooling_mode": "window",
+                "test_r2": 0.72,
+                "baseline_test_r2": 0.18,
+            },
+            {
+                "label": "shift_risk",
+                "task_type": "continuous",
+                "method": "linear_probe",
+                "weight_source": "random_init",
+                "layer": 9,
+                "token_position": "first_decode",
+                "pooling_mode": "series_mean",
+                "test_r2": 0.22,
+                "baseline_test_r2": 0.18,
             },
         ]
     )
@@ -101,4 +131,64 @@ def test_write_report_renders_markdown_and_summary(tmp_path: Path):
     report_text = report_path.read_text()
     assert "Toto Interp Research Report" in report_text
     assert "`shift_risk`" in report_text
+    assert "Control Comparison" in report_text
     assert summary["acceptance"]["transfer_probe_count"] == 1
+
+
+def test_write_report_operational_focus_uses_pretrained_slice(tmp_path: Path):
+    probe_results = pd.DataFrame(
+        [
+            {
+                "label": "coordination",
+                "task_type": "continuous",
+                "method": "linear_probe",
+                "weight_source": "pretrained",
+                "layer": 5,
+                "token_position": "final_context",
+                "pooling_mode": "series_mean",
+                "test_r2": 0.31,
+                "baseline_test_r2": 0.05,
+                "shuffled_test_r2": -0.12,
+            },
+            {
+                "label": "coordination",
+                "task_type": "continuous",
+                "method": "linear_probe",
+                "weight_source": "random_init",
+                "layer": 8,
+                "token_position": "first_decode",
+                "pooling_mode": "series_mean",
+                "test_r2": 0.02,
+                "baseline_test_r2": 0.05,
+                "shuffled_test_r2": -0.20,
+            },
+            {
+                "label": "coordination",
+                "task_type": "continuous",
+                "method": "fno",
+                "weight_source": "pretrained",
+                "layer": -2,
+                "token_position": "window",
+                "pooling_mode": "window",
+                "test_r2": -0.15,
+                "baseline_test_r2": 0.05,
+                "shuffled_test_r2": -0.25,
+            },
+        ]
+    )
+    probe_results_path = tmp_path / "probe_results.csv"
+    probe_results.to_csv(probe_results_path, index=False)
+
+    report_path = tmp_path / "report.md"
+    summary = write_report(
+        probe_results_path=[probe_results_path],
+        report_focus="operational",
+        primary_method="linear_probe",
+        primary_weight_source="pretrained",
+        output_markdown_path=report_path,
+    )
+
+    report_text = report_path.read_text()
+    assert "Main-Track Operational Results" in report_text
+    assert "linear_probe/pretrained=0.310" in report_text
+    assert summary["acceptance"]["operational_control_wins"] == 1

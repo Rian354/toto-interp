@@ -39,5 +39,14 @@ def default_dynamic_label_specs() -> list[LabelSpec]:
     ]
 
 
+def default_operational_label_specs() -> list[LabelSpec]:
+    return [
+        LabelSpec(name="current_burstiness", task_type="continuous"),
+        LabelSpec(name="future_burstiness", task_type="continuous"),
+        LabelSpec(name="shift_risk", task_type="continuous"),
+        LabelSpec(name="coordination", task_type="continuous"),
+    ]
+
+
 def default_label_specs() -> list[LabelSpec]:
     return default_taxonomy_label_specs() + default_dynamic_label_specs()

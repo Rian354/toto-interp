@@ -1,0 +1,431 @@
+\documentclass{article}
+
+\usepackage{neurips_2026}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{booktabs}
+\usepackage{amsfonts}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{nicefrac}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage{graphicx}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{enumitem}
+
+\newcommand{\tbd}[1]{\textcolor{blue}{\texttt{[#1]}}}
+\newcommand{\model}{\textsc{Toto}}
+\newcommand{\boom}{\textsc{BOOM}}
+\newcommand{\fev}{\textsc{FEV}}
+\newcommand{\lsf}{\textsc{LSF}}
+\newcommand{\repo}{\texttt{toto-interp}}
+\newcommand{\R}{\mathbb{R}}
+
+\title{Linear Operational Concepts in a Time-Series Foundation Model}
+
+\author{Anonymous Authors}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Time-series foundation models are increasingly used for forecasting, monitoring, and operational decision support, but their internal representations remain poorly understood. We study \model{}, a multivariate forecasting foundation model, and ask whether its hidden states linearly encode observability-native concepts such as metric type, domain, sparsity, burstiness, shift risk, and multivariate coordination. The broader study still includes structural decoding, localization, interventions, geometry, and optional \boom{}\,$\rightarrow$\,\fev{}/\lsf{} transfer, but the current experimental emphasis is intentionally narrower: operational regimes should be more linearly recoverable from the pretrained \model{} representation than from stronger controls such as raw-feature baselines, shuffled labels, randomized-weight checkpoints, and a nonlinear raw-window FNO baseline. This draft is grounded in the implemented codebase; numerical results, figure panels, and exact experimental counts remain marked as placeholders pending full-scale runs.
+\end{abstract}
+
+\section{Introduction}
+
+Foundation-style models for time series promise forecasting systems that generalize across domains, horizons, and telemetry regimes, yet most work still evaluates them almost entirely through downstream predictive accuracy. That leaves a central scientific question unresolved: what internal concepts actually support their forecasts?
+
+This question is especially important in operational settings. Observability practitioners rarely reason about a metric stream only through raw values. They reason in terms of regimes and abstractions: whether a series is sparse, whether a burst is underway, whether a metric is infrastructure-facing or application-facing, whether multiple variables are moving coherently, and whether the latest context suggests an impending distributional shift. If a time-series foundation model is genuinely useful in that setting, some of these abstractions may already be present in its internal states.
+
+We study \model{}, a public time-series foundation model for multivariate forecasting released through the \texttt{toto-ts} package \citep{datadog2025toto}. Rather than modifying the model architecture, we build an independent interpretability harness around it. The pipeline dumps patch-token residual activations, maps \boom{} windows into concept labels, fits linear probes across layers and token views, extracts concept directions for intervention, and evaluates out-of-domain transfer on \fev{} and \lsf{} benchmarks \citep{datadog2025boom, shchur2025fev, thuml2024tslib}.
+
+\paragraph{Draft status.}
+This manuscript is a paper-structured rough draft derived from the current repository, a prior long-form outline, and the active implementation roadmap. The method description and experimental framing match code that already exists in the repo; exact metrics, figure panels, and some benchmark counts are still represented with explicit placeholders.
+
+Our working thesis is that a time-series foundation model can contain internal representations of operational concepts that are both linearly accessible and behaviorally relevant. For the strongest main-track version of the paper, we decompose that thesis into three testable claims:
+\begin{enumerate}[leftmargin=18pt]
+\item operational regime variables should be decodable from residual activations above raw-feature, shuffled-label, randomized-weight, and nonlinear raw-window controls;
+\item the strongest operational concepts should localize non-uniformly across layers, token positions, and pooling views; and
+\item intervening on selected operational directions should alter forecast behavior in conceptually coherent ways.
+\end{enumerate}
+
+The paper also stays explicit about scope. The current study is centered on a frozen pretrained \model{} checkpoint and linear probes. The codebase now also supports randomized-weight controls, method selection between linear probes and an FNO-style supervised baseline, and checkpoint-source metadata for future checkpoint comparisons. We treat those additions as controls and comparison axes rather than as replacements for the main interpretability claim.
+
+\paragraph{Contributions.}
+This draft makes the following concrete contributions:
+\begin{enumerate}[leftmargin=18pt]
+\item It defines a reproducible, clone-free interpretability pipeline for \model{}, spanning activation tracing, label construction, probe fitting, causal interventions, transfer evaluation, and automated report generation.
+\item It keeps the original broader study intact while foregrounding an operational-regime control track as the strongest main empirical story.
+\item It incorporates stronger implemented controls for reviewer-facing attacks: raw-feature baselines, shuffled labels, randomized-weight backbones, and a nonlinear raw-window FNO comparison.
+\item It keeps geometry and transfer as implemented secondary analyses that can be moved to an appendix if they are not decisive in the final runs.
+\end{enumerate}
+
+\section{Related Work}
+
+\paragraph{Time-series foundation models.}
+Recent forecasting work has moved toward pretrained and foundation-style models that ingest heterogeneous temporal corpora and operate over patchified context windows. \model{} is particularly relevant because it targets observability-like multivariate telemetry, where sparsity, non-stationarity, and cross-variate structure are central \citep{datadog2025toto}.
+
+\paragraph{Linear probes and representation analysis.}
+Linear probes are a standard tool for testing whether a representation makes a concept linearly recoverable \citep{alain2016understanding}. In language and vision, probing is often paired with localization analysis and controlled interventions to distinguish mere decodability from functional relevance. That probe-plus-intervention framing motivates the present study.
+
+\paragraph{Activation interventions and mechanistic interpretability.}
+Recent mechanistic work emphasizes not only finding human-interpretable directions but also manipulating them to test whether they change downstream behavior \citep{turner2024steering, kastner2024mechanistic}. The time-series setting differs from language in that inputs are patch tokens over continuous streams, and the concepts of interest are operational regimes rather than lexical or semantic categories.
+
+\paragraph{Forecasting benchmarks.}
+\boom{} provides observability-native semantics that generic forecasting corpora do not. We use it as the in-domain source of concept labels. \fev{} and \lsf{}, by contrast, act as out-of-domain transfer environments for testing whether \boom{}-derived regime probes capture broader temporal structure \citep{shchur2025fev, thuml2024tslib}.
+
+\section{Problem Setup}
+
+Let $f_{\theta}$ denote a pretrained forecasting model that consumes a multivariate context window $x_{1:T}$ and predicts the next patch or horizon. Internally, the context is represented as a sequence of patch tokens processed by a transformer-like backbone. Let $h_{\ell,t} \in \R^d$ denote the residual-stream activation at layer $\ell$ and patch-token position $t$.
+
+Our goal is to study whether the activations $\{h_{\ell,t}\}$ encode operational concepts $c$ and whether selected concept directions causally influence forecast behavior.
+
+\subsection{Structural observability concepts}
+
+Structural concepts describe what a telemetry series \emph{is}. In the current pipeline these labels are derived from \boom{} taxonomy metadata and include:
+\begin{itemize}[leftmargin=18pt]
+\item metric type;
+\item domain;
+\item frequency bucket; and
+\item cardinality bucket.
+\end{itemize}
+
+These concepts are stable across windows from the same series and are intended to test whether the model represents broader telemetry semantics rather than only local numeric patterns.
+
+\subsection{Dynamic operating-regime concepts}
+
+Dynamic concepts describe what is happening near a forecast point. They are computed from the final context patch and the next true patch and include:
+\begin{itemize}[leftmargin=18pt]
+\item current and future sparsity;
+\item current and future burstiness;
+\item shift risk; and
+\item multivariate coordination.
+\end{itemize}
+
+These labels are window-specific and closer to the short-horizon forecasting regime the model actually operates in.
+
+\subsection{Research questions}
+
+The current draft is organized around five empirical questions:
+\begin{enumerate}[leftmargin=18pt]
+\item Which operational concepts are linearly decodable from \model{} activations?
+\item Which layers, token positions, and pooling modes best represent structural versus dynamic concepts?
+\item Does the model's space-wise mixing stage disproportionately support multivariate concepts such as coordination and cardinality?
+\item Do concept directions affect forecast behavior when ablated or steered?
+\item Do \boom{}-trained dynamic probes transfer zero-shot to \fev{} and \lsf{}?
+\end{enumerate}
+
+\section{Method}
+\label{sec:method}
+
+\subsection{Implementation substrate}
+
+All experiments are built in the independent \repo{} codebase, which consumes the public \texttt{toto-ts} package through standard installation rather than requiring a vendored Toto checkout. The repo currently supports:
+\begin{itemize}[leftmargin=18pt]
+\item \boom{} taxonomy loading and window construction;
+\item activation tracing over patch-token residual streams;
+\item linear probe fitting with controls;
+\item geometry and localization export;
+\item causal steering and ablation during forecasting;
+\item zero-shot transfer on \fev{} and \lsf{}; and
+\item Markdown and JSON run report generation.
+\end{itemize}
+
+\subsection{Activation views}
+
+We treat patch-token residual activations as the primary interpretability substrate. For each window we capture:
+\begin{itemize}[leftmargin=18pt]
+\item the patch embedding output;
+\item the output residual stream of every backbone layer;
+\item token views for all context tokens, the final context token, and the first decode token; and
+\item pooling views for series-level mean pooling and per-variate activations.
+\end{itemize}
+
+This yields a family of activation views indexed by $(\ell, \text{token view}, \text{pooling mode})$. The localization analysis compares concept decodability across this grid.
+
+\subsection{Label construction}
+
+The current implementation derives structural labels from \boom{} metadata and dynamic labels from each context/target pair. For a context patch $x^{\text{ctx}}$ and next true patch $x^{\text{next}}$, the draft uses the codebase definitions:
+\begin{itemize}[leftmargin=18pt]
+\item sparsity: fraction of zeros;
+\item burstiness: maximum robust $z$-score relative to the context scale;
+\item shift risk: normalized change between the final context patch and next patch; and
+\item coordination: fraction of target variates moving coherently above a robust threshold.
+\end{itemize}
+
+The repo splits \boom{} by series id rather than by window to reduce leakage across train, validation, and test partitions.
+
+\subsection{Probe fitting and controls}
+
+For each concept and each activation view, we fit a linear probe:
+\begin{itemize}[leftmargin=18pt]
+\item logistic regression for categorical labels; and
+\item ridge regression for continuous labels.
+\end{itemize}
+
+Each probe is compared against two controls already supported in the pipeline:
+\begin{enumerate}[leftmargin=18pt]
+\item a raw-feature baseline using engineered statistics from the last context patch and patch interface; and
+\item a shuffled-label control.
+\end{enumerate}
+
+The resulting artifacts contain train, validation, and test metrics. For categorical labels we track accuracy and macro-F1; for continuous labels we track $R^2$, RMSE, and MAE.
+
+\subsection{Concept directions, geometry, and localization}
+
+Beyond scalar performance, the pipeline exports direction-like objects from each fitted probe view. For continuous labels, the code defines positive and negative contrast sets using training deciles and takes their mean-difference vector. For binary labels, it uses the difference between class means. These directions support:
+\begin{itemize}[leftmargin=18pt]
+\item geometry analysis through cosine similarities and PCA;
+\item localization analysis through cross-view performance comparisons; and
+\item causal interventions during inference.
+\end{itemize}
+
+The working hypotheses are that structural concepts should favor pooled series views, dynamic concepts should be stronger in late or per-variate views, and multivariate concepts should benefit from the model's space-wise layer.
+
+\subsection{Causal interventions}
+
+The repo currently supports two intervention families applied during forecasting:
+\begin{itemize}[leftmargin=18pt]
+\item \textbf{projection ablation}: remove the component of an activation along a concept direction; and
+\item \textbf{additive steering}: add a scaled version of a concept direction during inference.
+\end{itemize}
+
+For each intervention sweep, the pipeline records forecast movement, uncertainty-sensitive summary statistics, frozen-probe concept scores on generated forecasts, and forecast error metrics such as WAPE, MASE, and WQL. The intervention targets currently emphasized in the scripts are future sparsity, future burstiness, shift risk, and coordination.
+
+\subsection{Transfer evaluation}
+
+We train probes on \boom{} and evaluate dynamic probes zero-shot on public forecasting benchmarks:
+\begin{itemize}[leftmargin=18pt]
+\item \fev{}, using the public \texttt{autogluon/fev\_datasets} registry and the vendored task definitions mirrored from Toto's public evaluation configuration; and
+\item \lsf{}, using Toto's published loader plus a repository-local downloader and validator for the public CSV bundles.
+\end{itemize}
+
+The transfer goal is not to preserve \boom{} taxonomy labels. Instead, it tests whether \boom{}-trained regime directions capture something more general about temporal structure.
+
+\section{Experimental Setup}
+\label{sec:setup}
+
+\subsection{Datasets}
+
+\paragraph{\boom{}.}
+\boom{} is the primary in-domain dataset because it exposes observability-native semantics. The final paper should fill in the exact number of series, windows, and train/validation/test counts: \tbd{dataset counts}.
+
+\paragraph{\fev{}.}
+The transfer benchmark currently uses the task registry already exposed in the repo. The rough draft expects a final experimental subset such as \texttt{entsoe\_15T} and \texttt{epf\_be}, but the exact list should be fixed after the full run configuration is chosen: \tbd{final FEV task list}.
+
+\paragraph{\lsf{}.}
+The \lsf{} transfer benchmark is supported when the public CSV bundles are downloaded locally. The likely initial subset is \texttt{ETTh1} and \texttt{electricity}, but the final paper should record the exact dataset list: \tbd{final LSF datasets}.
+
+\subsection{Splits, context windows, and runtime configuration}
+
+The smoke workflow already proves the end-to-end pipeline, but the scientific paper should report the full-scale configuration. The following fields remain to be filled from the run manifest:
+\begin{itemize}[leftmargin=18pt]
+\item train/validation/test split ratio: \tbd{split ratio};
+\item context length: \tbd{context length};
+\item patch size: \tbd{patch size};
+\item maximum windows per series: \tbd{max windows per series};
+\item number of forecast samples in intervention sweeps: \tbd{num samples};
+\item device setup and wall-clock budget: \tbd{compute profile}.
+\end{itemize}
+
+\subsection{End-to-end reproducibility}
+
+The main entrypoint for a full run is:
+\begin{quote}
+\texttt{python scripts/run\_toto\_pipeline.py --output-dir runs/full}
+\end{quote}
+
+The repo also exposes single-stage entrypoints for activation dumping, probe fitting, interventions, transfer, report rendering, \boom{} download, and \lsf{} download. This matters because the full paper can cite a single orchestration command while still letting readers reproduce or inspect each stage independently.
+
+\section{Results Draft}
+\label{sec:results}
+
+This section keeps the result narrative in place while leaving empirical values to be filled from the final run artifacts. The recommended main-track presentation is deliberately narrow: emphasize operational-regime decoding under strong controls first, include intervention only if it is clean, and move geometry or transfer to the appendix unless those sections are clearly decisive.
+
+\subsection{Structural observability concepts are supporting evidence}
+
+The first question is whether \model{} represents \boom{} taxonomy concepts above raw last-patch baselines. The expected table should summarize the best-performing view for each structural concept together with its matched raw-feature baseline.
+
+\begin{table*}[t]
+\centering
+\small
+\begin{tabularx}{\textwidth}{lcccccc}
+\toprule
+Concept & Best layer & Token view & Pooling & Probe metric & Raw baseline & Delta \\
+\midrule
+Metric type & \tbd{L} & \tbd{view} & \tbd{pool} & \tbd{score} & \tbd{score} & \tbd{delta} \\
+Domain & \tbd{L} & \tbd{view} & \tbd{pool} & \tbd{score} & \tbd{score} & \tbd{delta} \\
+Frequency bucket & \tbd{L} & \tbd{view} & \tbd{pool} & \tbd{score} & \tbd{score} & \tbd{delta} \\
+Cardinality bucket & \tbd{L} & \tbd{view} & \tbd{pool} & \tbd{score} & \tbd{score} & \tbd{delta} \\
+\bottomrule
+\end{tabularx}
+\caption{Draft placeholder for the best structural probes on \boom{} test windows.}
+\label{tab:structural}
+\end{table*}
+
+The interpretation to verify is straightforward: if activation-based probes consistently beat raw-patch statistics, then \model{} is not only tracking local values but also organizing telemetry semantics in its hidden states. But this section should remain supporting evidence unless the structural gains are materially stronger than the operational ones.
+
+\subsection{Dynamic operating-regime concepts exhibit structured localization}
+
+Dynamic concepts are the core behavioral regime variables of the paper. Here the main qualitative expectation is that current-patch concepts concentrate in context-adjacent views, future-facing concepts skew later, and per-variate views help for local regime detection.
+
+\begin{table*}[t]
+\centering
+\small
+\begin{tabularx}{\textwidth}{lcccccc}
+\toprule
+Concept & Best layer & Token view & Pooling & Probe metric & Raw baseline & Delta \\
+\midrule
+Current sparsity & \tbd{L} & \tbd{view} & \tbd{pool} & \tbd{score} & \tbd{score} & \tbd{delta} \\
+Future sparsity & \tbd{L} & \tbd{view} & \tbd{pool} & \tbd{score} & \tbd{score} & \tbd{delta} \\
+Current burstiness & \tbd{L} & \tbd{view} & \tbd{pool} & \tbd{score} & \tbd{score} & \tbd{delta} \\
+Future burstiness & \tbd{L} & \tbd{view} & \tbd{pool} & \tbd{score} & \tbd{score} & \tbd{delta} \\
+Shift risk & \tbd{L} & \tbd{view} & \tbd{pool} & \tbd{score} & \tbd{score} & \tbd{delta} \\
+Coordination & \tbd{L} & \tbd{view} & \tbd{pool} & \tbd{score} & \tbd{score} & \tbd{delta} \\
+\bottomrule
+\end{tabularx}
+\caption{Draft placeholder for the best dynamic probes on \boom{} test windows.}
+\label{tab:dynamic}
+\end{table*}
+
+\begin{figure}[t]
+\centering
+\fbox{\parbox[c][1.4in][c]{0.92\linewidth}{\centering Figure placeholder: heatmap of probe performance across layers, token positions, and pooling modes for dynamic concepts.}}
+\caption{Localization heatmap placeholder. The final figure should make the layer/token/pooling trade-offs immediately visible.}
+\label{fig:heatmap}
+\end{figure}
+
+\subsection{The space-wise layer may be especially relevant for multivariate concepts}
+
+The repo already highlights a testable architectural claim: layer 11, the space-wise mixing stage, may be disproportionately useful for coordination and cardinality. This is worth keeping only if the effect survives the stronger controls; otherwise it should be treated as a secondary localization observation rather than a headline contribution.
+
+\begin{figure}[t]
+\centering
+\fbox{\parbox[c][1.2in][c]{0.92\linewidth}{\centering Figure placeholder: layer-by-layer decoding curves for coordination and cardinality, with layer 11 highlighted.}}
+\caption{Draft placeholder for layer sensitivity of multivariate concepts.}
+\label{fig:layer11}
+\end{figure}
+
+\subsection{Geometry reveals relationships between operational concepts}
+
+The geometry artifacts exported by the repo support a more structural analysis of concept space. In the final paper this section should answer whether current and future versions of the same regime cluster together, whether sparsity and burstiness remain distinct axes, and whether multivariate concepts form a separate substructure. If these patterns are only modestly suggestive, the section should move to the appendix.
+
+\begin{figure}[t]
+\centering
+\fbox{\parbox[c][1.2in][c]{0.92\linewidth}{\centering Figure placeholder: cosine-similarity matrix or PCA projection of concept vectors.}}
+\caption{Draft placeholder for concept geometry.}
+\label{fig:geometry}
+\end{figure}
+
+\subsection{Causal interventions alter forecast behavior}
+
+Decodability alone is not enough, so the paper's strongest claim comes from interventions. The current intervention scripts already target future sparsity, future burstiness, shift risk, and coordination. The final analysis should answer two questions: whether frozen probe scores move in the expected direction and whether the resulting forecasts change coherently in shape, uncertainty, or concept-conditioned error.
+
+\begin{table*}[t]
+\centering
+\small
+\begin{tabularx}{\textwidth}{lccccc}
+\toprule
+Concept & Mode & Strength range & Probe-score movement & Forecast change & Error effect \\
+\midrule
+Future sparsity & \tbd{mode} & \tbd{range} & \tbd{effect} & \tbd{effect} & \tbd{effect} \\
+Future burstiness & \tbd{mode} & \tbd{range} & \tbd{effect} & \tbd{effect} & \tbd{effect} \\
+Shift risk & \tbd{mode} & \tbd{range} & \tbd{effect} & \tbd{effect} & \tbd{effect} \\
+Coordination & \tbd{mode} & \tbd{range} & \tbd{effect} & \tbd{effect} & \tbd{effect} \\
+\bottomrule
+\end{tabularx}
+\caption{Draft placeholder for intervention results.}
+\label{tab:interventions}
+\end{table*}
+
+\begin{figure}[t]
+\centering
+\fbox{\parbox[c][1.2in][c]{0.92\linewidth}{\centering Figure placeholder: steering and ablation curves showing concept score movement and forecast change versus intervention strength.}}
+\caption{Draft placeholder for causal intervention curves.}
+\label{fig:intervention}
+\end{figure}
+
+\subsection{\boom{}-trained dynamic probes transfer out of domain}
+
+The transfer analysis tests whether regime probes learned on observability data remain informative on non-observability forecasting tasks. This is valuable only if it lands cleanly; weak or mixed \boom{}\,$\rightarrow$\,\fev{}/\lsf{} transfer should be moved to the appendix rather than allowed to dilute the main claim.
+
+\begin{table*}[t]
+\centering
+\small
+\begin{tabularx}{\textwidth}{lccc}
+\toprule
+Probe & \fev{} delta over baseline & \lsf{} delta over baseline & Notes \\
+\midrule
+Current sparsity & \tbd{delta} & \tbd{delta} & \tbd{note} \\
+Future sparsity & \tbd{delta} & \tbd{delta} & \tbd{note} \\
+Current burstiness & \tbd{delta} & \tbd{delta} & \tbd{note} \\
+Future burstiness & \tbd{delta} & \tbd{delta} & \tbd{note} \\
+Shift risk & \tbd{delta} & \tbd{delta} & \tbd{note} \\
+Coordination & \tbd{delta} & \tbd{delta} & \tbd{note} \\
+\bottomrule
+\end{tabularx}
+\caption{Draft placeholder for zero-shot transfer summary.}
+\label{tab:transfer}
+\end{table*}
+
+\section{Controls and Extensions}
+\label{sec:plan}
+
+The current implementation extends the frozen-pretrained linear-probe study in three focused ways.
+
+\subsection{Randomized-weight controls}
+
+The most important control is to distinguish representational structure learned during pretraining from structure that arises from architecture alone. The loader now supports explicit model-source metadata for \texttt{pretrained}, \texttt{random\_init}, and \texttt{checkpoint} weight modes. The minimum viable control is full-model reinitialization after loading the public architecture.
+
+\subsection{Method selection beyond linear probes}
+
+The paper's current claims are intentionally probe-centered because interpretability depends on linear accessibility. The codebase therefore supports runtime method selection between the current linear probe backend and an FNO-style supervised baseline trained on raw windows. This should be presented as a supervised comparison point rather than an interpretability artifact: localization and intervention claims remain tied to activation-backed linear probes unless a separate causal story is justified.
+
+\subsection{Checkpoint-source and training-mode metadata}
+
+The implementation also formalizes distinctions that the paper should report explicitly:
+\begin{itemize}[leftmargin=18pt]
+\item backbone source: pretrained checkpoint, randomized weights, or user-provided checkpoint;
+\item backbone train mode: frozen or trainable; and
+\item feature source: activations or raw windows.
+\end{itemize}
+
+This matters because the scientific question changes if the backbone itself is tuned. The current draft is about what a published frozen \model{} checkpoint already encodes. Fine-tuning is deferred until the frozen-pretrained and randomized-weight comparisons are in place.
+
+\section{Limitations and Broader Impacts}
+
+This work studies a single public model, \model{}, so any conclusions about time-series foundation models more broadly remain tentative. The methodology is deliberately centered on linear probes and linear directions, which means some forecasting-relevant concepts may be encoded nonlinearly or only emerge at the circuit level. The dynamic labels are engineered from operational intuitions rather than directly observed latent variables. Finally, additive steering and projection ablation are coarse causal tools: they can show behavioral relevance without identifying the full mechanism through which a concept affects prediction.
+
+The broader impacts are mixed. On the positive side, better interpretability for telemetry forecasting could improve debugging, monitoring, failure analysis, and confidence calibration in operational settings. On the negative side, any method that gives finer-grained control over internal forecast behavior could be misused to manipulate outputs without sufficient safeguards or to overstate confidence in concept-level control. We therefore treat this work primarily as a transparency and auditability contribution, not as a production steering recipe.
+
+\section{Reproducibility and Artifact Availability}
+
+The repo is already organized as a reproducible research system. From a clean checkout, users can install the package, run the full pipeline, or invoke each stage independently. The codebase supports \boom{} download utilities, \lsf{} data bootstrapping, activation dumping, probe fitting, interventions, transfer evaluation, and report generation. The final submission should include:
+\begin{itemize}[leftmargin=18pt]
+\item exact command lines and configuration files for the reported runs;
+\item run manifests with split definitions and model identifiers;
+\item final generated tables and figures; and
+\item a short appendix documenting compute budget and failure cases.
+\end{itemize}
+
+For anonymity, the submission version can refer to the code release as an anonymized supplementary artifact, with de-anonymized URLs restored after review.
+
+\section{Conclusion}
+
+This draft frames an interpretability study of a time-series foundation model around a concrete, already-implemented research pipeline. The core empirical narrative is stable: use \boom{} to define operational concepts, test whether those concepts are linearly decodable from \model{} activations, localize where they appear, intervene on selected directions during forecasting, and test whether regime probes transfer to \fev{} and \lsf{}. The remaining work is primarily empirical completion rather than conceptual restructuring: run the full experiments, fill the placeholders, and tighten the benchmark-specific claims.
+
+\begin{ack}
+Acknowledgments should be added only in the final, non-anonymous version. This rough draft leaves the section intentionally blank.
+\end{ack}
+
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+\end{document}

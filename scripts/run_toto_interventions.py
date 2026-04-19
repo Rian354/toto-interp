@@ -38,6 +38,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--model-id", type=str, default="Datadog/Toto-Open-Base-1.0")
     parser.add_argument("--device", type=str, default="auto")
     parser.add_argument("--compile", action="store_true")
+    parser.add_argument("--weight-source", choices=("pretrained", "random_init", "checkpoint"), default="pretrained")
+    parser.add_argument("--checkpoint-path", type=Path, default=None)
+    parser.add_argument("--randomize-scope", choices=("full", "selected_layers", "head_only"), default="full")
+    parser.add_argument("--randomize-layers", type=int, nargs="*", default=[])
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--context-length", type=int, default=1024)
     parser.add_argument("--max-series", type=int, default=64)
@@ -109,13 +113,23 @@ def main() -> None:
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
     probe = ProbeArtifact.load(args.probe_path)
+    if probe.method != "linear_probe":
+        raise ValueError("run_toto_interventions.py only supports linear activation-backed probe artifacts.")
     if probe.label_spec.task_type != "continuous":
         raise ValueError("run_toto_interventions.py currently supports continuous regime probes only.")
     if probe.layer < 0:
         raise ValueError("run_toto_interventions.py only supports transformer-layer probes, not patch embeddings.")
 
     device = resolve_device(args.device)
-    model = load_toto_with_fallback(args.model_id, map_location="cpu", device=device)
+    model = load_toto_with_fallback(
+        args.model_id,
+        map_location="cpu",
+        device=device,
+        weight_source=args.weight_source,
+        checkpoint_path=args.checkpoint_path,
+        randomize_scope=args.randomize_scope,
+        randomize_layers=tuple(args.randomize_layers),
+    )
     if args.compile and hasattr(model, "compile"):
         model.compile()
     backbone = model.model
@@ -258,6 +272,10 @@ def main() -> None:
                 "split": args.split,
                 "window_count": len(windows),
                 "device": device,
+                "weight_source": args.weight_source,
+                "checkpoint_path": None if args.checkpoint_path is None else str(args.checkpoint_path),
+                "randomize_scope": args.randomize_scope,
+                "randomize_layers": args.randomize_layers,
                 "use_kv_cache": not args.disable_kv_cache,
                 "random_direction": args.random_direction,
             },

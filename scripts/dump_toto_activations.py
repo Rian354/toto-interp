@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from toto_interp import TraceConfig, extract_activations, load_toto_with_fallback
+from toto_interp import TraceConfig, WindowDataset, extract_activations, load_toto_with_fallback
 from toto_interp.loader import resolve_device
 from toto_interp.boom import (
     build_boom_windows,
@@ -31,6 +31,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-series-per-split", type=int, default=0)
     parser.add_argument("--include-heldout-late", action="store_true")
     parser.add_argument("--disable-kv-cache", action="store_true")
+    parser.add_argument("--weight-source", choices=("pretrained", "random_init", "checkpoint"), default="pretrained")
+    parser.add_argument("--checkpoint-path", type=Path, default=None)
+    parser.add_argument("--randomize-scope", choices=("full", "selected_layers", "head_only"), default="full")
+    parser.add_argument("--randomize-layers", type=int, nargs="*", default=[])
     return parser.parse_args()
 
 
@@ -39,7 +43,15 @@ def main() -> None:
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
     device = resolve_device(args.device)
-    model = load_toto_with_fallback(args.model_id, map_location="cpu", device=device)
+    model = load_toto_with_fallback(
+        args.model_id,
+        map_location="cpu",
+        device=device,
+        weight_source=args.weight_source,
+        checkpoint_path=args.checkpoint_path,
+        randomize_scope=args.randomize_scope,
+        randomize_layers=tuple(args.randomize_layers),
+    )
     if args.compile and hasattr(model, "compile"):
         model.compile()
     backbone = model.model
@@ -63,6 +75,10 @@ def main() -> None:
     trace_config = TraceConfig(use_kv_cache=not args.disable_kv_cache)
     summary: dict[str, object] = {
         "model_id": args.model_id,
+        "weight_source": args.weight_source,
+        "checkpoint_path": None if args.checkpoint_path is None else str(args.checkpoint_path),
+        "randomize_scope": args.randomize_scope,
+        "randomize_layers": args.randomize_layers,
         "patch_size": patch_size,
         "context_length": args.context_length,
         "device": device,
@@ -86,14 +102,29 @@ def main() -> None:
             max_windows_per_series=args.max_windows_per_series,
             include_heldout_late=args.include_heldout_late,
         )
+        source_metadata = {
+            "model_id": args.model_id,
+            "weight_source": args.weight_source,
+            "checkpoint_path": None if args.checkpoint_path is None else str(args.checkpoint_path),
+            "randomize_scope": args.randomize_scope,
+            "randomize_layers": args.randomize_layers,
+            "seed": args.seed,
+            "context_length": args.context_length,
+            "patch_size": patch_size,
+        }
         batch = extract_activations(model, windows, trace_config)
+        batch.source_metadata.update(source_metadata)
         batch_path = args.output_dir / f"{split_name}_activations.pt"
         batch.save(batch_path)
+        window_dataset = WindowDataset.from_windows(windows, source_metadata=source_metadata)
+        window_path = args.output_dir / f"{split_name}_windows.pt"
+        window_dataset.save(window_path)
         summary["splits"][split_name] = {
             "series_count": len(series_ids),
             "window_count": len(windows),
             "activation_count": len(batch),
             "path": str(batch_path),
+            "window_dataset_path": str(window_path),
         }
 
     with open(args.output_dir / "activation_dump_summary.json", "w") as handle:

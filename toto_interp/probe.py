@@ -86,6 +86,8 @@ def score_probe(
     *,
     prefix: str = "transfer",
 ) -> dict[str, float]:
+    if probe_artifact.method != "linear_probe":
+        raise ValueError("score_probe only supports linear activation-backed probe artifacts.")
     subset = activation_batch.subset(
         layer=probe_artifact.layer,
         token_position=probe_artifact.token_position,
@@ -185,6 +187,15 @@ def fit_probe(
     activation_batch: ActivationBatch,
     label_spec: LabelSpec,
     task_type: TaskType | None = None,
+    *,
+    method: str = "linear_probe",
+    model_id: str = "Datadog/Toto-Open-Base-1.0",
+    weight_source: str = "pretrained",
+    backbone_train_mode: str = "frozen",
+    checkpoint_path: str | None = None,
+    randomize_scope: str | None = None,
+    randomize_layers: tuple[int, ...] | None = None,
+    seed: int = 0,
 ) -> ProbeArtifact:
     """
     Fit a linear probe on a single activation view.
@@ -244,7 +255,7 @@ def fit_probe(
     positive_threshold: float | None = None
     negative_threshold: float | None = None
 
-    rng = np.random.default_rng(0)
+    rng = np.random.default_rng(seed)
 
     if resolved_task_type == "categorical":
         train_targets = np.asarray(y[train_mask], dtype=object)
@@ -254,21 +265,21 @@ def fit_probe(
         logistic = LogisticRegression(
             class_weight="balanced",
             max_iter=4000,
-            random_state=0,
+            random_state=seed,
         )
         logistic.fit(X_z[train_mask], train_targets)
 
         raw_logistic = LogisticRegression(
             class_weight="balanced",
             max_iter=4000,
-            random_state=0,
+            random_state=seed,
         )
         raw_logistic.fit(X_raw_z[train_mask], train_targets)
 
         shuffled_logistic = LogisticRegression(
             class_weight="balanced",
             max_iter=4000,
-            random_state=0,
+            random_state=seed,
         )
         shuffled_targets = np.asarray(train_targets, dtype=object)
         rng.shuffle(shuffled_targets)
@@ -361,6 +372,14 @@ def fit_probe(
         metrics=metrics,
         baseline_metrics=baseline_metrics,
         shuffled_metrics=shuffled_metrics,
+        method=method,
+        model_id=model_id,
+        weight_source=weight_source,
+        backbone_train_mode=backbone_train_mode,
+        checkpoint_path=checkpoint_path,
+        randomize_scope=randomize_scope,
+        randomize_layers=randomize_layers,
+        seed=seed,
         class_names=class_names,
         mean_difference_vector=mean_difference_vector,
         feature_mean=torch.as_tensor(feature_mean, dtype=torch.float32),

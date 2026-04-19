@@ -68,6 +68,7 @@ class ActivationBatch:
     window_ids: list[str]
     splits: list[str]
     labels: dict[str, list[Any]] = field(default_factory=dict)
+    source_metadata: dict[str, Any] = field(default_factory=dict)
 
     def __len__(self) -> int:
         return int(self.activations.shape[0])
@@ -86,6 +87,7 @@ class ActivationBatch:
             "window_ids": self.window_ids,
             "splits": self.splits,
             "labels": self.labels,
+            "source_metadata": self.source_metadata,
         }
         torch.save(payload, path)
 
@@ -126,6 +128,7 @@ class ActivationBatch:
             window_ids=[self.window_ids[i] for i in indices.tolist()],
             splits=[self.splits[i] for i in indices.tolist()],
             labels={name: [values[i] for i in indices.tolist()] for name, values in self.labels.items()},
+            source_metadata=dict(self.source_metadata),
         )
 
     def label_array(self, label_name: str) -> np.ndarray:
@@ -157,6 +160,7 @@ class ActivationBatch:
             window_ids=[item for batch in batches for item in batch.window_ids],
             splits=[item for batch in batches for item in batch.splits],
             labels={name: [item for batch in batches for item in batch.labels[name]] for name in label_names},
+            source_metadata=dict(batches[0].source_metadata),
         )
 
 
@@ -170,9 +174,171 @@ class LabelSpec:
 
 
 @dataclass
+class WindowDataset:
+    """
+    Serialized window-level dataset for non-activation methods.
+    """
+
+    contexts: torch.Tensor
+    next_patches: torch.Tensor
+    variate_mask: torch.Tensor
+    splits: list[str]
+    series_ids: list[str]
+    window_ids: list[str]
+    labels: dict[str, list[Any]] = field(default_factory=dict)
+    freqs: list[str] = field(default_factory=list)
+    item_ids: list[str] = field(default_factory=list)
+    num_target_variates: list[int] = field(default_factory=list)
+    patch_size: int = 0
+    source_metadata: dict[str, Any] = field(default_factory=dict)
+
+    def __len__(self) -> int:
+        return int(self.contexts.shape[0])
+
+    def save(self, path: str | Path) -> None:
+        payload = {
+            "contexts": self.contexts,
+            "next_patches": self.next_patches,
+            "variate_mask": self.variate_mask,
+            "splits": self.splits,
+            "series_ids": self.series_ids,
+            "window_ids": self.window_ids,
+            "labels": self.labels,
+            "freqs": self.freqs,
+            "item_ids": self.item_ids,
+            "num_target_variates": self.num_target_variates,
+            "patch_size": self.patch_size,
+            "source_metadata": self.source_metadata,
+        }
+        torch.save(payload, path)
+
+    @classmethod
+    def load(cls, path: str | Path) -> "WindowDataset":
+        payload = torch.load(path, map_location="cpu", weights_only=False)
+        return cls(**payload)
+
+    @classmethod
+    def from_windows(
+        cls,
+        windows: list[WindowExample],
+        *,
+        source_metadata: dict[str, Any] | None = None,
+    ) -> "WindowDataset":
+        if not windows:
+            raise ValueError("Cannot build a WindowDataset from an empty window list.")
+        max_variates = max(window.context.shape[0] for window in windows)
+        padded_contexts: list[torch.Tensor] = []
+        padded_next_patches: list[torch.Tensor] = []
+        variate_masks: list[torch.Tensor] = []
+        for window in windows:
+            pad_rows = max_variates - window.context.shape[0]
+            padded_contexts.append(torch.nn.functional.pad(window.context, (0, 0, 0, pad_rows)))
+            padded_next_patches.append(torch.nn.functional.pad(window.next_patch, (0, 0, 0, pad_rows)))
+            variate_masks.append(
+                torch.cat(
+                    [
+                        torch.ones(window.context.shape[0], dtype=torch.bool),
+                        torch.zeros(pad_rows, dtype=torch.bool),
+                    ]
+                )
+            )
+        return cls(
+            contexts=torch.stack(padded_contexts).to(torch.float32),
+            next_patches=torch.stack(padded_next_patches).to(torch.float32),
+            variate_mask=torch.stack(variate_masks),
+            splits=[window.split for window in windows],
+            series_ids=[window.series_id for window in windows],
+            window_ids=[window.window_id for window in windows],
+            labels={name: [window.labels[name] for window in windows] for name in windows[0].labels.keys()},
+            freqs=[window.freq for window in windows],
+            item_ids=[window.item_id for window in windows],
+            num_target_variates=[window.num_target_variates for window in windows],
+            patch_size=int(windows[0].patch_size),
+            source_metadata=dict(source_metadata or {}),
+        )
+
+    def label_array(self, label_name: str) -> np.ndarray:
+        values = self.labels[label_name]
+        if len(values) == 0:
+            return np.empty((0,))
+        sample = values[0]
+        if isinstance(sample, str):
+            return np.asarray(values, dtype=object)
+        return np.asarray(values, dtype=np.float64)
+
+    def subset(self, *, split: str | None = None) -> "WindowDataset":
+        if split is None:
+            return WindowDataset(
+                contexts=self.contexts.clone(),
+                next_patches=self.next_patches.clone(),
+                variate_mask=self.variate_mask.clone(),
+                splits=list(self.splits),
+                series_ids=list(self.series_ids),
+                window_ids=list(self.window_ids),
+                labels={name: list(values) for name, values in self.labels.items()},
+                freqs=list(self.freqs),
+                item_ids=list(self.item_ids),
+                num_target_variates=list(self.num_target_variates),
+                patch_size=self.patch_size,
+                source_metadata=dict(self.source_metadata),
+            )
+
+        mask = torch.tensor([value == split for value in self.splits], dtype=torch.bool)
+        indices = mask.nonzero(as_tuple=False).squeeze(-1).tolist()
+        return WindowDataset(
+            contexts=self.contexts[indices],
+            next_patches=self.next_patches[indices],
+            variate_mask=self.variate_mask[indices],
+            splits=[self.splits[i] for i in indices],
+            series_ids=[self.series_ids[i] for i in indices],
+            window_ids=[self.window_ids[i] for i in indices],
+            labels={name: [values[i] for i in indices] for name, values in self.labels.items()},
+            freqs=[self.freqs[i] for i in indices],
+            item_ids=[self.item_ids[i] for i in indices],
+            num_target_variates=[self.num_target_variates[i] for i in indices],
+            patch_size=self.patch_size,
+            source_metadata=dict(self.source_metadata),
+        )
+
+    @staticmethod
+    def concatenate(datasets: list["WindowDataset"]) -> "WindowDataset":
+        if not datasets:
+            raise ValueError("Cannot concatenate an empty list of WindowDataset objects.")
+        label_names = tuple(datasets[0].labels.keys())
+        max_variates = max(int(dataset.contexts.shape[1]) for dataset in datasets)
+
+        def pad_tensor_rows(tensor: torch.Tensor) -> torch.Tensor:
+            pad_rows = max_variates - int(tensor.shape[1])
+            if pad_rows <= 0:
+                return tensor
+            return torch.nn.functional.pad(tensor, (0, 0, 0, pad_rows))
+
+        def pad_mask(mask: torch.Tensor) -> torch.Tensor:
+            pad_rows = max_variates - int(mask.shape[1])
+            if pad_rows <= 0:
+                return mask
+            return torch.nn.functional.pad(mask, (0, pad_rows))
+
+        return WindowDataset(
+            contexts=torch.cat([pad_tensor_rows(dataset.contexts) for dataset in datasets], dim=0),
+            next_patches=torch.cat([pad_tensor_rows(dataset.next_patches) for dataset in datasets], dim=0),
+            variate_mask=torch.cat([pad_mask(dataset.variate_mask) for dataset in datasets], dim=0),
+            splits=[item for dataset in datasets for item in dataset.splits],
+            series_ids=[item for dataset in datasets for item in dataset.series_ids],
+            window_ids=[item for dataset in datasets for item in dataset.window_ids],
+            labels={name: [item for dataset in datasets for item in dataset.labels[name]] for name in label_names},
+            freqs=[item for dataset in datasets for item in dataset.freqs],
+            item_ids=[item for dataset in datasets for item in dataset.item_ids],
+            num_target_variates=[item for dataset in datasets for item in dataset.num_target_variates],
+            patch_size=datasets[0].patch_size,
+            source_metadata=dict(datasets[0].source_metadata),
+        )
+
+
+@dataclass
 class ProbeArtifact:
     """
-    Serializable representation of a linear probe fit on a single activation view.
+    Serializable representation of a fitted probe or comparison method artifact.
     """
 
     label_spec: LabelSpec
@@ -184,6 +350,15 @@ class ProbeArtifact:
     metrics: dict[str, float]
     baseline_metrics: dict[str, float]
     shuffled_metrics: dict[str, float]
+    method: str = "linear_probe"
+    model_id: str = "Datadog/Toto-Open-Base-1.0"
+    weight_source: str = "pretrained"
+    backbone_train_mode: str = "frozen"
+    checkpoint_path: str | None = None
+    randomize_scope: str | None = None
+    randomize_layers: tuple[int, ...] | None = None
+    seed: int = 0
+    artifact_metadata: dict[str, Any] = field(default_factory=dict)
     class_names: tuple[str, ...] | None = None
     mean_difference_vector: torch.Tensor | None = None
     feature_mean: torch.Tensor | None = None
@@ -201,7 +376,22 @@ class ProbeArtifact:
 
     @classmethod
     def load(cls, path: str | Path) -> "ProbeArtifact":
-        return torch.load(path, map_location="cpu", weights_only=False)
+        artifact = torch.load(path, map_location="cpu", weights_only=False)
+        defaults = {
+            "method": "linear_probe",
+            "model_id": "Datadog/Toto-Open-Base-1.0",
+            "weight_source": "pretrained",
+            "backbone_train_mode": "frozen",
+            "checkpoint_path": None,
+            "randomize_scope": None,
+            "randomize_layers": None,
+            "seed": 0,
+            "artifact_metadata": {},
+        }
+        for name, value in defaults.items():
+            if not hasattr(artifact, name):
+                setattr(artifact, name, value)
+        return artifact
 
 
 @dataclass(frozen=True)
