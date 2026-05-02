@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import time
+
 import numpy as np
 import torch
 from sklearn.linear_model import LogisticRegression, Ridge
@@ -257,6 +259,7 @@ def fit_probe(
 
     rng = np.random.default_rng(seed)
 
+    train_start = time.perf_counter()
     if resolved_task_type == "categorical":
         train_targets = np.asarray(y[train_mask], dtype=object)
         if len(np.unique(train_targets)) < 2:
@@ -362,6 +365,16 @@ def fit_probe(
         coef = torch.as_tensor(_sanitize_vector(np.atleast_2d(ridge.coef_)), dtype=torch.float32)
         intercept = torch.as_tensor(_sanitize_vector(np.atleast_1d(ridge.intercept_)), dtype=torch.float32)
 
+    train_total_time_s = float(time.perf_counter() - train_start)
+    artifact_metadata: dict[str, Any] = {
+        "timing": {
+            "train_total_time_s": train_total_time_s,
+            "peak_vram_bytes": 0.0,
+            "peak_vram_reserved_bytes": 0.0,
+        },
+        "history": [],
+    }
+
     return ProbeArtifact(
         label_spec=label_spec,
         layer=layer,
@@ -401,4 +414,5 @@ def fit_probe(
         ),
         positive_threshold=positive_threshold,
         negative_threshold=negative_threshold,
+        artifact_metadata=artifact_metadata,
     )

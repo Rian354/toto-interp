@@ -8,6 +8,12 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from toto_interp.issue3_matching import ISSUE3_CONTEXT_LENGTH, ISSUE3_LABEL_GROUP
+
+LABEL_GROUP_AUTO = "__auto__"
 
 
 @dataclass(frozen=True)
@@ -53,6 +59,17 @@ SIZE_PRESETS: dict[str, SizePreset] = {
         fno_layers=3,
         fno_modes=12,
     ),
+    # Matches Issue #3 / standardized activation scale (postrun_status.md, dump_standardized_activations.sh).
+    "issue3": SizePreset(
+        max_series_per_split=500,
+        max_windows_per_series=4,
+        num_samples=16,
+        fno_epochs=16,
+        fno_batch_size=16,
+        fno_width=24,
+        fno_layers=3,
+        fno_modes=12,
+    ),
 }
 
 
@@ -65,7 +82,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--suite", choices=("operational", "paper", "all"), default="all")
     parser.add_argument("--size", choices=tuple(SIZE_PRESETS), default="prelim")
     parser.add_argument("--seeds", type=int, nargs="+", default=[42])
-    parser.add_argument("--context-length", type=int, default=128)
+    parser.add_argument(
+        "--context-length",
+        type=int,
+        default=-1,
+        help="Default: 1024 for size=issue3, else 128 (Issue #3 / standardized activations use 1024).",
+    )
+    parser.add_argument(
+        "--operational-label-group",
+        choices=("all", "taxonomy", "dynamic", "operational", LABEL_GROUP_AUTO),
+        default=LABEL_GROUP_AUTO,
+        help="Label set for the operational suite. Default: all if size=issue3 (matches Issue #3 taxonomy+dynamic), else operational.",
+    )
     parser.add_argument("--skip-transfer", action="store_true")
     parser.add_argument("--reuse-existing", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
@@ -129,6 +157,7 @@ def run_operational_suite(
     preset: SizePreset,
     context_length: int,
     seed: int,
+    label_group: str,
     skip_transfer: bool,
     reuse_existing: bool,
     dry_run: bool,
@@ -149,9 +178,9 @@ def run_operational_suite(
         "--num-samples",
         str(preset.num_samples),
         "--label-group",
-        "operational",
+        label_group,
         "--report-focus",
-        "operational",
+        "operational" if label_group == "operational" else "full",
         "--seed",
         str(seed),
     ]
@@ -207,7 +236,7 @@ def run_operational_suite(
             "--method",
             "fno",
             "--label-group",
-            "operational",
+            label_group,
             "--device",
             device,
             "--seed",
@@ -278,14 +307,21 @@ def run_paper_suite(
     run_command(command, dry_run=dry_run)
 
 
-def write_plan_manifest(args: argparse.Namespace, preset: SizePreset) -> None:
+def write_plan_manifest(
+    args: argparse.Namespace,
+    preset: SizePreset,
+    *,
+    context_length: int,
+    operational_label_group: str,
+) -> None:
     args.output_root.mkdir(parents=True, exist_ok=True)
     manifest = {
         "suite": args.suite,
         "device": args.device,
         "size": args.size,
         "preset": asdict(preset),
-        "context_length": args.context_length,
+        "context_length": context_length,
+        "operational_label_group": operational_label_group,
         "seeds": args.seeds,
         "skip_transfer": args.skip_transfer,
         "reuse_existing": args.reuse_existing,
@@ -297,7 +333,14 @@ def write_plan_manifest(args: argparse.Namespace, preset: SizePreset) -> None:
 def main() -> None:
     args = parse_args()
     preset = SIZE_PRESETS[args.size]
-    write_plan_manifest(args, preset)
+    context_length = (
+        args.context_length if args.context_length >= 0 else (ISSUE3_CONTEXT_LENGTH if args.size == "issue3" else 128)
+    )
+    if args.operational_label_group == LABEL_GROUP_AUTO:
+        operational_label_group = ISSUE3_LABEL_GROUP if args.size == "issue3" else "operational"
+    else:
+        operational_label_group = args.operational_label_group
+    write_plan_manifest(args, preset, context_length=context_length, operational_label_group=operational_label_group)
 
     for seed in args.seeds:
         if args.suite in {"operational", "all"}:
@@ -305,8 +348,9 @@ def main() -> None:
                 output_root=args.output_root,
                 device=args.device,
                 preset=preset,
-                context_length=args.context_length,
+                context_length=context_length,
                 seed=seed,
+                label_group=operational_label_group,
                 skip_transfer=args.skip_transfer,
                 reuse_existing=args.reuse_existing,
                 dry_run=args.dry_run,
@@ -316,7 +360,7 @@ def main() -> None:
                 output_root=args.output_root,
                 device=args.device,
                 preset=preset,
-                context_length=args.context_length,
+                context_length=context_length,
                 seed=seed,
                 skip_transfer=args.skip_transfer,
                 reuse_existing=args.reuse_existing,
