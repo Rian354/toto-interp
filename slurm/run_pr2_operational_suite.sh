@@ -13,7 +13,9 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=120G
 #SBATCH --time=8:00:00
-# One seed at a time in this array (`%1`). For parallel seeds use `slurm/run_pr2_operational_one.sh` per seed.
+# One seed at a time in this array (`%1`). For **separate job IDs per seed** (often parallel), use:
+#   ./slurm/submit_pr2_individual_seeds.sh 42 43 44 45 46
+# or:  sbatch --export=ALL,SEED=43 slurm/run_pr2_operational_one.sh
 #SBATCH --array=42-46%1
 #SBATCH --output=logs/pr2_icexpress_%A_%a.out
 #SBATCH --error=logs/pr2_icexpress_%A_%a.err
