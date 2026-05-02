@@ -1,6 +1,10 @@
 #!/bin/bash
 # Same as run_pr2_operational_suite.sh but one seed per job (no array).
-# Submit:  sbatch --export=ALL,SEED=43 slurm/run_pr2_operational_one.sh
+# Submit (default ic-express):  sbatch --export=ALL,SEED=43 slurm/run_pr2_operational_one.sh
+# Faster queue / capacity — scavenger GPU nodes (CLI overrides #SBATCH partition):
+#   sbatch --partition=scavenger --job-name=toto-pr2-scav \
+#     --output=logs/pr2_one_scav_%j.out --error=logs/pr2_one_scav_%j.err \
+#     --export=ALL,SEED=43 slurm/run_pr2_operational_one.sh
 # Logs:    logs/pr2_one_<jobid>.out (use sacct -j <id> to map seed from command line)
 #
 #SBATCH --job-name=toto-pr2-1
