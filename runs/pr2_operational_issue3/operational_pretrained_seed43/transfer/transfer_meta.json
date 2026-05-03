@@ -1,0 +1,82 @@
+{
+  "model_id": "Datadog/Toto-Open-Base-1.0",
+  "probe_paths": [
+    "/scratch/rianatri/toto-interp/runs/pr2_operational_issue3/operational_pretrained_seed43/probes/artifacts/coordination__layer_11__all_context__per_variate.pt",
+    "/scratch/rianatri/toto-interp/runs/pr2_operational_issue3/operational_pretrained_seed43/probes/artifacts/coordination__layer_11__all_context__series_mean.pt",
+    "/scratch/rianatri/toto-interp/runs/pr2_operational_issue3/operational_pretrained_seed43/probes/artifacts/coordination__layer_-1__final_context__per_variate.pt",
+    "/scratch/rianatri/toto-interp/runs/pr2_operational_issue3/operational_pretrained_seed43/probes/artifacts/coordination__layer_-1__final_context__series_mean.pt",
+    "/scratch/rianatri/toto-interp/runs/pr2_operational_issue3/operational_pretrained_seed43/probes/artifacts/coordination__layer_-1__first_decode__per_variate.pt",
+    "/scratch/rianatri/toto-interp/runs/pr2_operational_issue3/operational_pretrained_seed43/probes/artifacts/coordination__layer_-1__first_decode__series_mean.pt",
+    "/scratch/rianatri/toto-interp/runs/pr2_operational_issue3/operational_pretrained_seed43/probes/artifacts/current_burstiness__layer_11__all_context__per_variate.pt",
+    "/scratch/rianatri/toto-interp/runs/pr2_operational_issue3/operational_pretrained_seed43/probes/artifacts/current_burstiness__layer_11__all_context__series_mean.pt",
+    "/scratch/rianatri/toto-interp/runs/pr2_operational_issue3/operational_pretrained_seed43/probes/artifacts/current_burstiness__layer_11__final_context__per_variate.pt",
+    "/scratch/rianatri/toto-interp/runs/pr2_operational_issue3/operational_pretrained_seed43/probes/artifacts/current_burstiness__layer_-1__final_context__series_mean.pt",
+    "/scratch/rianatri/toto-interp/runs/pr2_operational_issue3/operational_pretrained_seed43/probes/artifacts/current_burstiness__layer_11__first_decode__per_variate.pt",
+    "/scratch/rianatri/toto-interp/runs/pr2_operational_issue3/operational_pretrained_seed43/probes/artifacts/current_burstiness__layer_-1__first_decode__series_mean.pt",
+    "/scratch/rianatri/toto-interp/runs/pr2_operational_issue3/operational_pretrained_seed43/probes/artifacts/current_sparsity__layer_11__all_context__per_variate.pt",
+    "/scratch/rianatri/toto-interp/runs/pr2_operational_issue3/operational_pretrained_seed43/probes/artifacts/current_sparsity__layer_1__all_context__series_mean.pt",
+    "/scratch/rianatri/toto-interp/runs/pr2_operational_issue3/operational_pretrained_seed43/probes/artifacts/current_sparsity__layer_11__final_context__per_variate.pt",
+    "/scratch/rianatri/toto-interp/runs/pr2_operational_issue3/operational_pretrained_seed43/probes/artifacts/current_sparsity__layer_-1__final_context__series_mean.pt",
+    "/scratch/rianatri/toto-interp/runs/pr2_operational_issue3/operational_pretrained_seed43/probes/artifacts/current_sparsity__layer_11__first_decode__per_variate.pt",
+    "/scratch/rianatri/toto-interp/runs/pr2_operational_issue3/operational_pretrained_seed43/probes/artifacts/current_sparsity__layer_-1__first_decode__series_mean.pt",
+    "/scratch/rianatri/toto-interp/runs/pr2_operational_issue3/operational_pretrained_seed43/probes/artifacts/future_burstiness__layer_9__all_context__per_variate.pt",
+    "/scratch/rianatri/toto-interp/runs/pr2_operational_issue3/operational_pretrained_seed43/probes/artifacts/future_burstiness__layer_11__all_context__series_mean.pt",
+    "/scratch/rianatri/toto-interp/runs/pr2_operational_issue3/operational_pretrained_seed43/probes/artifacts/future_burstiness__layer_11__final_context__per_variate.pt",
+    "/scratch/rianatri/toto-interp/runs/pr2_operational_issue3/operational_pretrained_seed43/probes/artifacts/future_burstiness__layer_-1__final_context__series_mean.pt",
+    "/scratch/rianatri/toto-interp/runs/pr2_operational_issue3/operational_pretrained_seed43/probes/artifacts/future_burstiness__layer_9__first_decode__per_variate.pt",
+    "/scratch/rianatri/toto-interp/runs/pr2_operational_issue3/operational_pretrained_seed43/probes/artifacts/future_burstiness__layer_-1__first_decode__series_mean.pt",
+    "/scratch/rianatri/toto-interp/runs/pr2_operational_issue3/operational_pretrained_seed43/probes/artifacts/future_sparsity__layer_11__all_context__per_variate.pt",
+    "/scratch/rianatri/toto-interp/runs/pr2_operational_issue3/operational_pretrained_seed43/probes/artifacts/future_sparsity__layer_1__all_context__series_mean.pt",
+    "/scratch/rianatri/toto-interp/runs/pr2_operational_issue3/operational_pretrained_seed43/probes/artifacts/future_sparsity__layer_11__final_context__per_variate.pt",
+    "/scratch/rianatri/toto-interp/runs/pr2_operational_issue3/operational_pretrained_seed43/probes/artifacts/future_sparsity__layer_-1__final_context__series_mean.pt",
+    "/scratch/rianatri/toto-interp/runs/pr2_operational_issue3/operational_pretrained_seed43/probes/artifacts/future_sparsity__layer_11__first_decode__per_variate.pt",
+    "/scratch/rianatri/toto-interp/runs/pr2_operational_issue3/operational_pretrained_seed43/probes/artifacts/future_sparsity__layer_-1__first_decode__series_mean.pt",
+    "/scratch/rianatri/toto-interp/runs/pr2_operational_issue3/operational_pretrained_seed43/probes/artifacts/shift_risk__layer_7__all_context__per_variate.pt",
+    "/scratch/rianatri/toto-interp/runs/pr2_operational_issue3/operational_pretrained_seed43/probes/artifacts/shift_risk__layer_4__all_context__series_mean.pt",
+    "/scratch/rianatri/toto-interp/runs/pr2_operational_issue3/operational_pretrained_seed43/probes/artifacts/shift_risk__layer_8__final_context__per_variate.pt",
+    "/scratch/rianatri/toto-interp/runs/pr2_operational_issue3/operational_pretrained_seed43/probes/artifacts/shift_risk__layer_-1__final_context__series_mean.pt",
+    "/scratch/rianatri/toto-interp/runs/pr2_operational_issue3/operational_pretrained_seed43/probes/artifacts/shift_risk__layer_6__first_decode__per_variate.pt",
+    "/scratch/rianatri/toto-interp/runs/pr2_operational_issue3/operational_pretrained_seed43/probes/artifacts/shift_risk__layer_-1__first_decode__series_mean.pt"
+  ],
+  "dataset_mode": "fev",
+  "device": "cuda",
+  "weight_source": "pretrained",
+  "checkpoint_path": null,
+  "randomize_scope": "full",
+  "randomize_layers": [],
+  "trace_config": {
+    "layers": [
+      1,
+      4,
+      6,
+      7,
+      8,
+      9,
+      11
+    ],
+    "token_positions": [
+      "all_context",
+      "final_context",
+      "first_decode"
+    ],
+    "pooling_modes": [
+      "per_variate",
+      "series_mean"
+    ],
+    "use_kv_cache": true
+  },
+  "datasets": {
+    "fev:entsoe_15T": {
+      "window_count": 18,
+      "series_count": 6
+    },
+    "fev:epf_be": {
+      "window_count": 3,
+      "series_count": 1
+    },
+    "fev:ETT_15T": {
+      "window_count": 6,
+      "series_count": 2
+    }
+  }
+}

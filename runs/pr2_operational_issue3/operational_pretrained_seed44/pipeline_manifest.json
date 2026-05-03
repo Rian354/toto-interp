@@ -1,0 +1,27 @@
+{
+  "model_id": "Datadog/Toto-Open-Base-1.0",
+  "device": "cuda",
+  "seed": 44,
+  "context_length": 1024,
+  "max_series_per_split": 500,
+  "max_windows_per_series": 4,
+  "num_samples": 16,
+  "max_intervention_probes": 4,
+  "skip_transfer": false,
+  "activations_dir": "/scratch/rianatri/toto-interp/runs/pr2_operational_issue3/operational_pretrained_seed44/activations",
+  "probes_dir": "/scratch/rianatri/toto-interp/runs/pr2_operational_issue3/operational_pretrained_seed44/probes",
+  "intervention_dirs": [
+    "/scratch/rianatri/toto-interp/runs/pr2_operational_issue3/operational_pretrained_seed44/interventions/future_sparsity",
+    "/scratch/rianatri/toto-interp/runs/pr2_operational_issue3/operational_pretrained_seed44/interventions/future_burstiness",
+    "/scratch/rianatri/toto-interp/runs/pr2_operational_issue3/operational_pretrained_seed44/interventions/shift_risk",
+    "/scratch/rianatri/toto-interp/runs/pr2_operational_issue3/operational_pretrained_seed44/interventions/coordination"
+  ],
+  "transfer_dir": "/scratch/rianatri/toto-interp/runs/pr2_operational_issue3/operational_pretrained_seed44/transfer",
+  "report_path": "/scratch/rianatri/toto-interp/runs/pr2_operational_issue3/operational_pretrained_seed44/report.md",
+  "report_summary_path": "/scratch/rianatri/toto-interp/runs/pr2_operational_issue3/operational_pretrained_seed44/report_summary.json",
+  "probe_method": "linear_probe",
+  "label_group": "all",
+  "report_focus": "full",
+  "weight_source": "pretrained",
+  "checkpoint_path": null
+}

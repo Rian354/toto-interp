@@ -1,0 +1,20 @@
+{
+  "probe_path": "/scratch/rianatri/toto-interp/runs/pr2_operational_issue3/operational_pretrained_seed45/probes/artifacts/shift_risk__layer_11__all_context__per_variate.pt",
+  "label": "shift_risk",
+  "mode": "steer",
+  "strengths": [
+    -0.05,
+    -0.02,
+    0.02,
+    0.05
+  ],
+  "split": "test",
+  "window_count": 1408,
+  "device": "cuda",
+  "weight_source": "pretrained",
+  "checkpoint_path": null,
+  "randomize_scope": "full",
+  "randomize_layers": [],
+  "use_kv_cache": true,
+  "random_direction": false
+}

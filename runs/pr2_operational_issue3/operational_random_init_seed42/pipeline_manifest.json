@@ -1,0 +1,22 @@
+{
+  "model_id": "Datadog/Toto-Open-Base-1.0",
+  "device": "cuda",
+  "seed": 42,
+  "context_length": 1024,
+  "max_series_per_split": 500,
+  "max_windows_per_series": 4,
+  "num_samples": 16,
+  "max_intervention_probes": 0,
+  "skip_transfer": false,
+  "activations_dir": "/scratch/rianatri/toto-interp/runs/pr2_operational_issue3/operational_random_init_seed42/activations",
+  "probes_dir": "/scratch/rianatri/toto-interp/runs/pr2_operational_issue3/operational_random_init_seed42/probes",
+  "intervention_dirs": [],
+  "transfer_dir": "/scratch/rianatri/toto-interp/runs/pr2_operational_issue3/operational_random_init_seed42/transfer",
+  "report_path": "/scratch/rianatri/toto-interp/runs/pr2_operational_issue3/operational_random_init_seed42/report.md",
+  "report_summary_path": "/scratch/rianatri/toto-interp/runs/pr2_operational_issue3/operational_random_init_seed42/report_summary.json",
+  "probe_method": "linear_probe",
+  "label_group": "all",
+  "report_focus": "full",
+  "weight_source": "random_init",
+  "checkpoint_path": null
+}
