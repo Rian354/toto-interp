@@ -53,14 +53,29 @@ def load_probe_best_per_label(path: Path) -> pd.DataFrame:
     df = pd.read_csv(path)
     if df.empty:
         return df
-    metric = "test_accuracy" if "test_accuracy" in df.columns and df["test_accuracy"].notna().any() else "test_r2"
     group_cols = ["label", "method"]
     if "weight_source" in df.columns:
         group_cols.append("weight_source")
     if "seed" in df.columns:
         group_cols.append("seed")
-    idx = df.groupby(group_cols, dropna=False)[metric].idxmax()
-    return df.loc[idx].reset_index(drop=True)
+
+    picked: list[pd.Series] = []
+    for _, g in df.groupby(group_cols, dropna=False):
+        if "task_type" in g.columns:
+            tt = str(g["task_type"].iloc[0]).lower()
+            metric = "test_r2" if tt == "continuous" else "test_accuracy"
+        elif "test_accuracy" in g.columns and g["test_accuracy"].notna().any():
+            metric = "test_accuracy"
+        else:
+            metric = "test_r2"
+        if metric not in g.columns or not g[metric].notna().any():
+            continue
+        idx = g[metric].idxmax()
+        picked.append(g.loc[idx])
+
+    if not picked:
+        return df.iloc[0:0].copy()
+    return pd.DataFrame(picked).reset_index(drop=True)
 
 
 def extract_artifact_history_timing(artifact_path: Path) -> tuple[pd.DataFrame, dict[str, float]]:
@@ -99,13 +114,18 @@ def collect_pr2_cost_tables(
             df = load_probe_best_per_label(csv_path)
             if df.empty:
                 continue
-            metric_col = (
-                "test_accuracy" if "test_accuracy" in df.columns and df["test_accuracy"].notna().any() else "test_r2"
-            )
             for _, r in df.iterrows():
+                tt = str(r.get("task_type", "")).lower()
+                metric_col = "test_r2" if tt == "continuous" else "test_accuracy"
+                if metric_col not in r.index:
+                    metric_col = "test_r2" if "test_r2" in r.index else "test_accuracy"
                 ap = Path(str(r["artifact_path"]))
                 if not ap.exists():
-                    continue
+                    alt = csv_path.parent / "artifacts" / ap.name
+                    if alt.exists():
+                        ap = alt
+                    else:
+                        continue
                 hist, timing = extract_artifact_history_timing(ap)
                 if not hist.empty:
                     h = hist.copy()
@@ -246,6 +266,9 @@ def load_fno_best_per_label(path: Path) -> pd.DataFrame:
     else:
         metric = "test_r2"
     idx = df.groupby(["label"], dropna=False)[metric].idxmax()
+    idx = idx.dropna()
+    if idx.empty:
+        return df.iloc[0:0].copy()
     return df.loc[idx].reset_index(drop=True)
 
 

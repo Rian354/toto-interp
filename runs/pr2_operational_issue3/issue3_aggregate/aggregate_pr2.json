@@ -1,0 +1,22 @@
+{
+  "runs_root": "/scratch/rianatri/toto-interp/runs/pr2_operational_issue3",
+  "seeds": [
+    42,
+    43,
+    44,
+    45,
+    46
+  ],
+  "wide_csv": "/scratch/rianatri/toto-interp/runs/pr2_operational_issue3/issue3_aggregate/pr2_issue3_matched_per_seed.csv",
+  "cost_outputs": {
+    "probe_timing_raw": "/scratch/rianatri/toto-interp/runs/pr2_operational_issue3/issue3_aggregate/probe_timing_raw.csv",
+    "probe_timing_mean_ci": "/scratch/rianatri/toto-interp/runs/pr2_operational_issue3/issue3_aggregate/probe_timing_mean_ci.csv",
+    "fno_learning_curves": "/scratch/rianatri/toto-interp/runs/pr2_operational_issue3/issue3_aggregate/fno_learning_curves.csv",
+    "fno_learning_curves_mean_ci": "/scratch/rianatri/toto-interp/runs/pr2_operational_issue3/issue3_aggregate/fno_learning_curves_mean_ci.csv",
+    "cost_efficiency_mean_ci": "/scratch/rianatri/toto-interp/runs/pr2_operational_issue3/issue3_aggregate/cost_efficiency_mean_ci.csv"
+  },
+  "notes": {
+    "learning_curves": "FNO only (epoch history in fno_learning_curves*.csv); linear probes use sklearn (no epochs).",
+    "linear_vram": "Linear artifacts use CPU sklearn; peak_vram_bytes is 0 unless future instrumentation adds GPU."
+  }
+}
